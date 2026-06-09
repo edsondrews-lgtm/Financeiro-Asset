@@ -1,3 +1,5 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index.js" }]
+  "buildCommand": "pnpm --filter @workspace/financeiro run build",
+  "outputDirectory": "artifacts/financeiro/dist/public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
