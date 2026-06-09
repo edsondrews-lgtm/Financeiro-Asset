@@ -1,9 +1,18 @@
 {
-  "rewrites": [
+  "build": {
+    "env": {
+      "CI": "false"
+    }
+  },
+  "functions": {
+    "api/**/*.mjs": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "dist/index.mjs"
+      "src": "/(.*)",
+      "dest": "dist/index.mjs"
     }
   ]
 }
-
