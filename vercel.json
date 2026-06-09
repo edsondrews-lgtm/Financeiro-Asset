@@ -1,14 +1,11 @@
 {
-  "build": {
-    "env": {
-      "CI": "false"
+  "version": 2,
+  "builds": [
+    {
+      "src": "dist/index.mjs",
+      "use": "@vercel/node"
     }
-  },
-  "functions": {
-    "api/**/*.mjs": {
-      "runtime": "nodejs18.x"
-    }
-  },
+  ],
   "routes": [
     {
       "src": "/(.*)",
