@@ -1,6 +1,3 @@
 {
-  "framework": null,
-  "buildCommand": "pnpm --filter @workspace/financeiro run build",
-  "outputDirectory": "artifacts/financeiro/dist/public",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
