@@ -4,6 +4,7 @@ import ControleEmpresa from './views/ControleEmpresa';
 import SaidasPainel from './views/SaidasPainel';
 import DashboardImovel from './components/DashboardImovel';
 import PasswordGate from './components/PasswordGate';
+import CarteiraInvestimentos from './views/CarteiraInvestimentos'; // ← NOVO
 import { LayoutDashboard, Building2, Home, User, Wallet, ArrowUpRight, DollarSign, Percent, TrendingUp } from 'lucide-react';
 
 interface Nota {
@@ -47,7 +48,7 @@ export default function App() {
     { id: 'empresa', label: 'Empresa', icon: <Building2 size={14} /> },
     { id: 'imoveis', label: 'Imóveis', icon: <Home size={14} /> },
     { id: 'pessoal', label: 'Pessoal', icon: <User size={14} /> },
-    { id: 'investimentos', label: 'Investimentos', icon: <Wallet size={14} />, disabled: true },
+    { id: 'investimentos', label: 'Investimentos', icon: <Wallet size={14} /> }, // ← disabled removido
   ];
 
   const PainelGeral = () => (
@@ -126,12 +127,9 @@ export default function App() {
               {navItems.map(item => (
                 <button
                   key={item.id}
-                  onClick={() => !item.disabled && setAbaAtiva(item.id)}
-                  disabled={item.disabled}
+                  onClick={() => setAbaAtiva(item.id)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                    item.disabled
-                      ? 'text-slate-300 cursor-not-allowed'
-                      : abaAtiva === item.id
+                    abaAtiva === item.id
                       ? 'bg-white text-blue-600 shadow-sm'
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
@@ -148,6 +146,7 @@ export default function App() {
           {abaAtiva === 'empresa' && <ControleEmpresa />}
           {abaAtiva === 'pessoal' && <SaidasPainel />}
           {abaAtiva === 'imoveis' && <DashboardImovel />}
+          {abaAtiva === 'investimentos' && <CarteiraInvestimentos />} {/* ← NOVO */}
         </main>
       </div>
     </PasswordGate>
