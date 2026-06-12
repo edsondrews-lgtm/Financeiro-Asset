@@ -539,7 +539,8 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
   const faltam = meta > 0 ? Math.max(0, meta - saldoComRendimento) : null
   // Taxa efetiva: CDI atual da BCB, ou fallback fixo 0,0325%/dia
   const iD = cdiUltimo / 100
-  const rendimentoMensalEst = caixinha.valor_atual * (Math.pow(1 + iD, 30) - 1)
+  // CDI rende em dias úteis: 252/ano ÷ 12 meses = 21 dias úteis/mês
+  const rendimentoMensalEst = caixinha.valor_atual * (Math.pow(1 + iD, 21) - 1)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
 
@@ -844,9 +845,11 @@ export default function Caixinhas() {
   const totalGuardado = caixinhas.reduce((acc, c) => acc + c.valor_atual, 0)
   const taxaRef = cdiUltimo > 0 ? cdiUltimo : 0.0325
   // Estimativa mensal consolidada usando taxa atual do CDI
+  // CDI rende em dias úteis: 252/ano ÷ 12 meses = 21 dias úteis/mês
+  const DIAS_UTEIS_MES = 21
   const totalRendimentoMensal = caixinhas.reduce((acc, c) => {
     const iD = taxaRef / 100
-    return acc + c.valor_atual * (Math.pow(1 + iD, 30) - 1)
+    return acc + c.valor_atual * (Math.pow(1 + iD, DIAS_UTEIS_MES) - 1)
   }, 0)
   // Juros compostos com CDI histórico real para todas as caixinhas
   const { totalDepositadoGlobal, totalRendimentoReal } = caixinhas.reduce((acc, c) => {
