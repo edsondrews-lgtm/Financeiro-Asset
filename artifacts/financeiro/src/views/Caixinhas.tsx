@@ -53,26 +53,36 @@ function taxaDiaria(taxaDiariaPercent: number): number {
   return taxaDiariaPercent / 100
 }
 
-// ─── API BCB ───────────────────────────────────────────────────────────────────
+// ─── API BCB — CDI histórico ───────────────────────────────────────────────────
 // Série 4389 = CDI diário em % a.d. (ex: "0.0325")
-// Fonte oficial: https://dadosabertos.bcb.gov.br
+// Fonte: https://dadosabertos.bcb.gov.br
 
-interface DadosCDI {
-  valor: number      // % ao dia, ex: 0.0325
-  data: string       // "DD/MM/YYYY"
-  origem: 'bcb'
+type CdiMap = Map<string, number> // chave: "YYYY-MM-DD", valor: taxa %/dia
+
+function fmtDataBCB(d: Date): string {
+  const dd   = String(d.getDate()).padStart(2, '0')
+  const mm   = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy}`
 }
 
-async function buscarCDIdiario(): Promise<DadosCDI> {
-  const url = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json'
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`BCB retornou ${res.status}`)
+async function buscarHistoricoCDI(dataInicio: Date): Promise<CdiMap> {
+  const hoje = new Date()
+  const url  = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados?formato=json`
+            + `&dataInicial=${fmtDataBCB(dataInicio)}&dataFinal=${fmtDataBCB(hoje)}`
+  const res  = await fetch(url)
+  if (!res.ok) throw new Error(`BCB ${res.status}`)
   const dados = await res.json() as { data: string; valor: string }[]
-  if (!dados.length) throw new Error('Nenhum dado retornado')
-  return { valor: parseFloat(dados[0].valor), data: dados[0].data, origem: 'bcb' }
+  const map: CdiMap = new Map()
+  for (const d of dados) {
+    // BCB retorna "DD/MM/YYYY" → converte para "YYYY-MM-DD"
+    const [dd, mm, yyyy] = d.data.split('/')
+    map.set(`${yyyy}-${mm}-${dd}`, parseFloat(d.valor))
+  }
+  return map
 }
 
-// ─── Componente: Botão buscar CDI ─────────────────────────────────────────────
+// ─── Componente: Botão buscar CDI (para formulários) ──────────────────────────
 
 function BotaoCDI({ onBuscado }: { onBuscado: (taxa: number, data: string) => void }) {
   const [status, setStatus] = useState<'idle' | 'carregando' | 'ok' | 'erro'>('idle')
@@ -81,10 +91,15 @@ function BotaoCDI({ onBuscado }: { onBuscado: (taxa: number, data: string) => vo
   async function buscar() {
     setStatus('carregando')
     try {
-      const cdi = await buscarCDIdiario()
-      setInfo({ valor: cdi.valor, data: cdi.data })
+      const map = await buscarHistoricoCDI(new Date())
+      const entries = [...map.entries()].sort(([a], [b]) => b.localeCompare(a))
+      if (!entries.length) throw new Error('vazio')
+      const [dataKey, valor] = entries[0]
+      const [yyyy, mm, dd] = dataKey.split('-')
+      const dataFmt = `${dd}/${mm}/${yyyy}`
+      setInfo({ valor, data: dataFmt })
       setStatus('ok')
-      onBuscado(cdi.valor, cdi.data)
+      onBuscado(valor, dataFmt)
     } catch {
       setStatus('erro')
     }
@@ -136,29 +151,55 @@ interface LinhaRendimento {
 }
 
 /**
- * Processa cada aporte individualmente com juros compostos diários.
- * VF = P × (1 + i_diaria)^n
- * Retorna linha a linha e o saldo projetado total.
+ * Processa cada aporte com juros compostos diários.
+ * - Se cdiMap fornecido: usa o CDI real de cada dia útil (Banco Central).
+ *   VF = P × ∏(1 + cdi[d]/100) para cada dia d desde o depósito até ontem.
+ * - Fallback: VF = P × (1 + taxaFallbackPct/100)^n (taxa fixa).
  */
-function calcularJurosCompostos(aportes: Aporte[], taxaMensal: number): {
-  linhas: LinhaRendimento[]
-  saldoProjetado: number
-  totalDepositado: number
-  totalRendimento: number
-} {
-  const i = taxaDiaria(taxaMensal)
+function calcularJurosCompostos(
+  aportes: Aporte[],
+  taxaFallbackPct: number,
+  cdiMap: CdiMap = new Map()
+): { linhas: LinhaRendimento[]; saldoProjetado: number; totalDepositado: number; totalRendimento: number } {
+  const hoje    = new Date(); hoje.setHours(0, 0, 0, 0)
+  const hojeStr = hoje.toISOString().split('T')[0]
+
+  // Pré-processa CDI: log acumulado por data útil (exclui hoje pois não fechou)
+  const sorted = [...cdiMap.entries()]
+    .filter(([d]) => d < hojeStr)
+    .sort(([a], [b]) => a.localeCompare(b))
+
+  const cumLog: { date: string; log: number }[] = []
+  let running = 0
+  for (const [date, taxa] of sorted) {
+    running += Math.log1p(taxa / 100)
+    cumLog.push({ date, log: running })
+  }
+  const totalLog = running
+  const usaCDI   = cumLog.length > 0
+
+  // Retorna log acumulado estritamente antes de dateStr
+  function logAntesDe(dateStr: string): number {
+    let lo = 0, hi = cumLog.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cumLog[mid].date < dateStr) lo = mid + 1; else hi = mid }
+    return lo === 0 ? 0 : cumLog[lo - 1].log
+  }
+
   const linhas: LinhaRendimento[] = aportes
     .filter(a => a.valor_adicionado > 0)
     .map(a => {
-      const n         = diasCorridos(a.data_aporte)
-      const vf        = a.valor_adicionado * Math.pow(1 + i, n)
+      const n    = diasCorridos(a.data_aporte)
+      const fator = usaCDI
+        ? Math.exp(totalLog - logAntesDe(a.data_aporte))
+        : Math.pow(1 + taxaFallbackPct / 100, n)
+      const vf        = a.valor_adicionado * fator
       const rendimento = vf - a.valor_adicionado
       return { aporte: a, dias: n, valorInicial: a.valor_adicionado, rendimento, valorFinal: vf }
     })
+
   const totalDepositado = linhas.reduce((s, l) => s + l.valorInicial, 0)
   const saldoProjetado  = linhas.reduce((s, l) => s + l.valorFinal, 0)
-  const totalRendimento = saldoProjetado - totalDepositado
-  return { linhas, saldoProjetado, totalDepositado, totalRendimento }
+  return { linhas, saldoProjetado, totalDepositado, totalRendimento: saldoProjetado - totalDepositado }
 }
 
 // ─── Modal: Aporte ────────────────────────────────────────────────────────────
@@ -238,17 +279,15 @@ function ModalAporte({ caixinha, onFechar, onConfirmar }: {
 
 // ─── Modal: Histórico ─────────────────────────────────────────────────────────
 
-function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: () => void }) {
-  const [aportes, setAportes] = useState<Aporte[]>([])
-  const [carregando, setCarregando] = useState(true)
+function ModalHistorico({ caixinha, aportesIniciais, cdiMap, cdiUltimo, onFechar }: {
+  caixinha: Caixinha
+  aportesIniciais: Aporte[]
+  cdiMap: CdiMap
+  cdiUltimo: number
+  onFechar: () => void
+}) {
+  const [aportes, setAportes] = useState<Aporte[]>(aportesIniciais)
   const [aba, setAba] = useState<'lancamentos' | 'rendimento'>('rendimento')
-
-  useEffect(() => {
-    supabase.from('caixinhas_aportes').select('*')
-      .eq('caixinha_id', caixinha.id)
-      .order('data_aporte', { ascending: true })
-      .then(({ data }) => { setAportes(data || []); setCarregando(false) })
-  }, [caixinha.id])
 
   async function removerAporte(id: string) {
     if (!confirm('Remover este registro?')) return
@@ -257,9 +296,9 @@ function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: 
   }
 
   const { linhas, saldoProjetado, totalDepositado, totalRendimento } =
-    calcularJurosCompostos(aportes, caixinha.taxa_rendimento_mensal)
+    calcularJurosCompostos(aportes, cdiUltimo, cdiMap)
 
-  const iDiaria = taxaDiaria(caixinha.taxa_rendimento_mensal)
+  const iDiaria = cdiUltimo / 100
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -468,9 +507,11 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
 
 // ─── Card da Caixinha ─────────────────────────────────────────────────────────
 
-function CardCaixinha({ caixinha, aportes, onAtualizar }: {
+function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
   caixinha: Caixinha
   aportes: Aporte[]
+  cdiMap: CdiMap
+  cdiUltimo: number
   onAtualizar: () => void
 }) {
   const [modalAporte, setModalAporte] = useState(false)
@@ -481,22 +522,24 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
   const meta = caixinha.meta ?? 0
   const progressoPct = meta > 0 ? Math.min(100, (caixinha.valor_atual / meta) * 100) : 0
   const faltam = meta > 0 ? Math.max(0, meta - caixinha.valor_atual) : null
+  // Taxa efetiva: usa CDI atual se disponível, senão a taxa salva na caixinha
+  const taxaEfetiva = cdiUltimo > 0 ? cdiUltimo : caixinha.taxa_rendimento_mensal
   // Estimativa mensal: VF = P × (1 + i_diaria)^30 − P
-  const iD = taxaDiaria(caixinha.taxa_rendimento_mensal)
+  const iD = taxaEfetiva / 100
   const rendimentoMensalEst = caixinha.valor_atual * (Math.pow(1 + iD, 30) - 1)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
 
-  // Juros compostos diários por aporte: VF = P × (1 + i_diaria)^n
+  // Juros compostos com CDI histórico real (ou fallback fixo)
   const { linhas: linhasJuros, saldoProjetado, totalDepositado, totalRendimento: rendimentoReal } =
-    calcularJurosCompostos(aportes, caixinha.taxa_rendimento_mensal)
+    calcularJurosCompostos(aportes, taxaEfetiva, cdiMap)
 
   const aportesPositivos = linhasJuros
   const primeiroDep = aportesPositivos.length > 0
     ? [...aportesPositivos].sort((a, b) => a.aporte.data_aporte.localeCompare(b.aporte.data_aporte))[0].aporte.data_aporte
     : null
   const diasDecorridos = primeiroDep ? diasCorridos(primeiroDep) : 0
-  const iDiaria = taxaDiaria(caixinha.taxa_rendimento_mensal)
+  const iDiaria = iD
 
   async function confirmarAporte(valor: number, data: string, obs: string) {
     const anterior = caixinha.valor_atual
@@ -660,7 +703,13 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
         <ModalAporte caixinha={caixinha} onFechar={() => setModalAporte(false)} onConfirmar={confirmarAporte} />
       )}
       {modalHistorico && (
-        <ModalHistorico caixinha={caixinha} onFechar={() => setModalHistorico(false)} />
+        <ModalHistorico
+          caixinha={caixinha}
+          aportesIniciais={aportes}
+          cdiMap={cdiMap}
+          cdiUltimo={cdiUltimo}
+          onFechar={() => setModalHistorico(false)}
+        />
       )}
       {modalEditar && (
         <ModalEditar caixinha={caixinha} onFechar={() => setModalEditar(false)} onSalvo={() => { setModalEditar(false); onAtualizar() }} />
@@ -755,35 +804,60 @@ export default function Caixinhas() {
   const [mostrarForm, setMostrarForm] = useState(false)
   const [carregando, setCarregando] = useState(true)
 
+  // CDI histórico da API do Banco Central
+  const [cdiMap, setCdiMap]       = useState<CdiMap>(new Map())
+  const [cdiUltimo, setCdiUltimo] = useState<number>(0)
+  const [cdiStatus, setCdiStatus] = useState<'idle' | 'carregando' | 'ok' | 'erro'>('idle')
+
   async function carregar() {
     setCarregando(true)
     const [{ data: cx }, { data: ap }] = await Promise.all([
       supabase.from('caixinhas').select('*').order('created_at', { ascending: true }),
       supabase.from('caixinhas_aportes').select('*').order('data_aporte', { ascending: true }),
     ])
-    setCaixinhas(cx || [])
-    setTodosAportes(ap || [])
+    const caixinhasCarregadas = cx || []
+    const aportesCarregados   = ap || []
+    setCaixinhas(caixinhasCarregadas)
+    setTodosAportes(aportesCarregados)
     setCarregando(false)
+
+    // Busca CDI histórico a partir do primeiro aporte registrado
+    const positivos = aportesCarregados.filter(a => a.valor_adicionado > 0)
+    if (positivos.length === 0) return
+    const maisAntigo = [...positivos].sort((a, b) => a.data_aporte.localeCompare(b.data_aporte))[0]
+    const dataInicio = new Date(maisAntigo.data_aporte + 'T12:00:00')
+
+    setCdiStatus('carregando')
+    try {
+      const map = await buscarHistoricoCDI(dataInicio)
+      setCdiMap(map)
+      // Pega o último valor útil
+      const ultimo = [...map.entries()].sort(([a], [b]) => b.localeCompare(a))[0]
+      if (ultimo) setCdiUltimo(ultimo[1])
+      setCdiStatus('ok')
+    } catch {
+      setCdiStatus('erro')
+    }
   }
 
   useEffect(() => { carregar() }, [])
 
   const totalGuardado = caixinhas.reduce((acc, c) => acc + c.valor_atual, 0)
-  const totalRendimento = caixinhas.reduce((acc, c) => {
-    const iD = taxaDiaria(c.taxa_rendimento_mensal)
+  const taxaRef = cdiUltimo > 0 ? cdiUltimo : 0.0325
+  // Estimativa mensal consolidada usando taxa atual do CDI
+  const totalRendimentoMensal = caixinhas.reduce((acc, c) => {
+    const iD = taxaRef / 100
     return acc + c.valor_atual * (Math.pow(1 + iD, 30) - 1)
   }, 0)
-  // Juros compostos diários somados de todas as caixinhas
-  const { totalDepositado: totalDepositadoGlobal, totalRendimento: totalRendimentoReal, saldoProjetado: totalProjetado } =
-    caixinhas.reduce((acc, c) => {
-      const ap = todosAportes.filter(a => a.caixinha_id === c.id)
-      const r  = calcularJurosCompostos(ap, c.taxa_rendimento_mensal)
-      return {
-        totalDepositado: acc.totalDepositado + r.totalDepositado,
-        totalRendimento: acc.totalRendimento + r.totalRendimento,
-        saldoProjetado:  acc.saldoProjetado  + r.saldoProjetado,
-      }
-    }, { totalDepositado: 0, totalRendimento: 0, saldoProjetado: 0 })
+  // Juros compostos com CDI histórico real para todas as caixinhas
+  const { totalDepositadoGlobal, totalRendimentoReal } = caixinhas.reduce((acc, c) => {
+    const ap = todosAportes.filter(a => a.caixinha_id === c.id)
+    const r  = calcularJurosCompostos(ap, taxaRef, cdiMap)
+    return {
+      totalDepositadoGlobal: acc.totalDepositadoGlobal + r.totalDepositado,
+      totalRendimentoReal:   acc.totalRendimentoReal   + r.totalRendimento,
+    }
+  }, { totalDepositadoGlobal: 0, totalRendimentoReal: 0 })
 
   return (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
@@ -799,10 +873,27 @@ export default function Caixinhas() {
             <p className="text-slate-500 text-sm">Metas de poupança com rendimento automático</p>
           </div>
         </div>
-        <button onClick={() => setMostrarForm(v => !v)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
-          {mostrarForm ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Nova caixinha</>}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Badge CDI */}
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border
+            ${cdiStatus === 'ok'         ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+            : cdiStatus === 'erro'       ? 'bg-rose-50 border-rose-200 text-rose-500'
+            : cdiStatus === 'carregando' ? 'bg-blue-50 border-blue-200 text-blue-600'
+            : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+            {cdiStatus === 'carregando' ? <RefreshCw size={11} className="animate-spin" /> :
+             cdiStatus === 'ok'         ? <Wifi size={11} /> :
+             cdiStatus === 'erro'       ? <WifiOff size={11} /> :
+                                          <Wifi size={11} />}
+            {cdiStatus === 'ok'         ? `CDI ${cdiUltimo.toFixed(4)}%/dia · BCB`
+            : cdiStatus === 'erro'      ? 'CDI offline — taxa fixa'
+            : cdiStatus === 'carregando'? 'Buscando CDI…'
+            :                            'CDI'}
+          </div>
+          <button onClick={() => setMostrarForm(v => !v)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
+            {mostrarForm ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Nova caixinha</>}
+          </button>
+        </div>
       </div>
 
       {/* Resumo global */}
@@ -819,8 +910,8 @@ export default function Caixinhas() {
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Rendimento Mensal</div>
-              <div className="text-2xl font-black text-emerald-600 mt-1">+{fmt(totalRendimento)}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">estimativa próximo mês</div>
+              <div className="text-2xl font-black text-emerald-600 mt-1">+{fmt(totalRendimentoMensal)}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">estimativa próximo mês · CDI {taxaRef.toFixed(4)}%/dia</div>
             </div>
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={20} /></div>
           </div>
@@ -828,14 +919,16 @@ export default function Caixinhas() {
             <div>
               <div className="text-xs text-emerald-200 font-bold uppercase tracking-wider">Já Rendeu</div>
               <div className="text-2xl font-black text-white mt-1">+{fmt(totalRendimentoReal)}</div>
-              <div className="text-[10px] text-emerald-200 mt-0.5">saldo − total depositado</div>
+              <div className="text-[10px] text-emerald-200 mt-0.5">
+                {cdiStatus === 'ok' ? `CDI real · ${cdiMap.size} dias úteis` : 'taxa fixa de fallback'}
+              </div>
             </div>
             <div className="p-3 bg-white/20 text-white rounded-xl"><TrendingUp size={20} /></div>
           </div>
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Projeção Anual</div>
-              <div className="text-2xl font-black text-emerald-400 mt-1">+{fmt(totalRendimento * 12)}</div>
+              <div className="text-2xl font-black text-emerald-400 mt-1">+{fmt(totalRendimentoMensal * 12)}</div>
               <div className="text-[10px] text-slate-400 mt-0.5">próximos 12 meses</div>
             </div>
             <div className="p-3 bg-white/10 text-emerald-400 rounded-xl"><TrendingUp size={20} /></div>
@@ -862,6 +955,8 @@ export default function Caixinhas() {
               key={c.id}
               caixinha={c}
               aportes={todosAportes.filter(a => a.caixinha_id === c.id)}
+              cdiMap={cdiMap}
+              cdiUltimo={cdiUltimo > 0 ? cdiUltimo : c.taxa_rendimento_mensal}
               onAtualizar={carregar}
             />
           ))}
