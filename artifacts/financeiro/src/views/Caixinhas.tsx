@@ -44,25 +44,52 @@ function diasAte(prazo: string): number {
 }
 
 /**
- * Soma somente os aportes de entrada (valores positivos).
- * O rendimento real = valor_atual - totalDepositado
- * (o saldo já carrega os juros diários embutidos)
+ * Converte taxa mensal (%) para taxa diária equivalente via juros compostos.
+ * i_diaria = (1 + taxa_mensal/100)^(1/30.437) - 1
  */
-function calcularTotalDepositado(aportes: Aporte[]): number {
-  return aportes.reduce((total, a) => total + (a.valor_adicionado > 0 ? a.valor_adicionado : 0), 0)
+function taxaDiaria(taxaMensal: number): number {
+  return Math.pow(1 + taxaMensal / 100, 1 / 30.437) - 1
+}
+
+/** Dias exatos entre uma data (string YYYY-MM-DD) e hoje */
+function diasCorridos(data: string): number {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const dep  = new Date(data + 'T12:00:00')
+  return Math.max(0, Math.floor((hoje.getTime() - dep.getTime()) / 86400000))
+}
+
+interface LinhaRendimento {
+  aporte: Aporte
+  dias: number
+  valorInicial: number
+  rendimento: number
+  valorFinal: number
 }
 
 /**
- * Taxa efetiva média mensal com base no rendimento real e no período decorrido.
- * taxa = (rendimento / total_depositado) / meses_decorridos × 100
+ * Processa cada aporte individualmente com juros compostos diários.
+ * VF = P × (1 + i_diaria)^n
+ * Retorna linha a linha e o saldo projetado total.
  */
-function calcularTaxaEfetiva(rendimento: number, totalDepositado: number, primeiroDep: string | null): number {
-  if (!primeiroDep || totalDepositado <= 0 || rendimento <= 0) return 0
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
-  const inicio = new Date(primeiroDep + 'T12:00:00')
-  const dias = Math.max(1, (hoje.getTime() - inicio.getTime()) / 86400000)
-  const meses = dias / 30.437
-  return (rendimento / totalDepositado / meses) * 100
+function calcularJurosCompostos(aportes: Aporte[], taxaMensal: number): {
+  linhas: LinhaRendimento[]
+  saldoProjetado: number
+  totalDepositado: number
+  totalRendimento: number
+} {
+  const i = taxaDiaria(taxaMensal)
+  const linhas: LinhaRendimento[] = aportes
+    .filter(a => a.valor_adicionado > 0)
+    .map(a => {
+      const n         = diasCorridos(a.data_aporte)
+      const vf        = a.valor_adicionado * Math.pow(1 + i, n)
+      const rendimento = vf - a.valor_adicionado
+      return { aporte: a, dias: n, valorInicial: a.valor_adicionado, rendimento, valorFinal: vf }
+    })
+  const totalDepositado = linhas.reduce((s, l) => s + l.valorInicial, 0)
+  const saldoProjetado  = linhas.reduce((s, l) => s + l.valorFinal, 0)
+  const totalRendimento = saldoProjetado - totalDepositado
+  return { linhas, saldoProjetado, totalDepositado, totalRendimento }
 }
 
 // ─── Modal: Aporte ────────────────────────────────────────────────────────────
@@ -145,11 +172,12 @@ function ModalAporte({ caixinha, onFechar, onConfirmar }: {
 function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: () => void }) {
   const [aportes, setAportes] = useState<Aporte[]>([])
   const [carregando, setCarregando] = useState(true)
+  const [aba, setAba] = useState<'lancamentos' | 'rendimento'>('rendimento')
 
   useEffect(() => {
     supabase.from('caixinhas_aportes').select('*')
       .eq('caixinha_id', caixinha.id)
-      .order('data_aporte', { ascending: false })
+      .order('data_aporte', { ascending: true })
       .then(({ data }) => { setAportes(data || []); setCarregando(false) })
   }, [caixinha.id])
 
@@ -159,9 +187,16 @@ function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: 
     setAportes(prev => prev.filter(a => a.id !== id))
   }
 
+  const { linhas, saldoProjetado, totalDepositado, totalRendimento } =
+    calcularJurosCompostos(aportes, caixinha.taxa_rendimento_mensal)
+
+  const iDiaria = taxaDiaria(caixinha.taxa_rendimento_mensal)
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-2xl space-y-4 max-h-[85vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-3xl space-y-4 max-h-[90vh] flex flex-col">
+
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><History size={18} /></div>
@@ -170,46 +205,98 @@ function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: 
           <button onClick={onFechar} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16} /></button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        {/* Resumo de topo */}
+        <div className="grid grid-cols-3 gap-3">
           <div className="bg-slate-50 rounded-xl p-3 text-center">
-            <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Valor Atual</div>
-            <div className="text-lg font-black text-emerald-600 mt-0.5">{fmt(caixinha.valor_atual)}</div>
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Depositado</div>
+            <div className="text-base font-black text-slate-700 mt-0.5">{fmt(totalDepositado)}</div>
           </div>
-          {caixinha.meta && (
-            <div className="bg-slate-50 rounded-xl p-3 text-center">
-              <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Meta Total</div>
-              <div className="text-lg font-black text-blue-600 mt-0.5">{fmt(caixinha.meta)}</div>
-            </div>
-          )}
+          <div className="bg-emerald-50 rounded-xl p-3 text-center">
+            <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Rendimento Projetado</div>
+            <div className="text-base font-black text-emerald-700 mt-0.5">+{fmt(totalRendimento)}</div>
+            <div className="text-[10px] text-emerald-500">i = {(iDiaria * 100).toFixed(4)}%/dia</div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-3 text-center">
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo Projetado</div>
+            <div className="text-base font-black text-white mt-0.5">{fmt(saldoProjetado)}</div>
+          </div>
         </div>
 
-        <div className="overflow-y-auto flex-1">
+        {/* Abas */}
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+          <button onClick={() => setAba('rendimento')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${aba === 'rendimento' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            Juros por Aporte
+          </button>
+          <button onClick={() => setAba('lancamentos')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${aba === 'lancamentos' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            Lançamentos
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 -mx-1 px-1">
           {carregando ? (
             <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>
           ) : aportes.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm">Nenhum aporte registrado.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white">
-                <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
-                  <th className="text-left py-2 pr-4">Data</th>
-                  <th className="text-right py-2 pr-4">Valor Adicionado</th>
-                  <th className="text-right py-2 pr-4">Valor Anterior</th>
-                  <th className="text-right py-2 pr-4">Valor Após</th>
-                  <th className="text-left py-2 pr-4">Observação</th>
-                  <th className="py-2"></th>
+          ) : aba === 'rendimento' ? (
+            /* ── Tabela de juros compostos diários ── */
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b-2 border-slate-100">
+                  <th className="text-left py-2.5 pr-3">Data</th>
+                  <th className="text-right py-2.5 pr-3">Valor Inicial</th>
+                  <th className="text-right py-2.5 pr-3">Dias Corridos</th>
+                  <th className="text-right py-2.5 pr-3">Rendimento</th>
+                  <th className="text-right py-2.5">Valor Final</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {aportes.map(a => (
-                  <tr key={a.id} className="hover:bg-slate-50/60">
-                    <td className="py-3 pr-4 text-slate-500 text-xs">{fmtDate(a.data_aporte)}</td>
-                    <td className={`py-3 pr-4 text-right font-bold text-xs ${a.valor_adicionado >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                {linhas.map(l => (
+                  <tr key={l.aporte.id} className="hover:bg-slate-50/70">
+                    <td className="py-3 pr-3 text-slate-600 font-medium">{fmtDate(l.aporte.data_aporte)}</td>
+                    <td className="py-3 pr-3 text-right text-slate-700 font-semibold">{fmt(l.valorInicial)}</td>
+                    <td className="py-3 pr-3 text-right">
+                      <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">{l.dias}d</span>
+                    </td>
+                    <td className="py-3 pr-3 text-right font-bold text-emerald-600">+{fmt(l.rendimento)}</td>
+                    <td className="py-3 text-right font-black text-slate-800">{fmt(l.valorFinal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-200 bg-slate-50 sticky bottom-0">
+                <tr>
+                  <td className="py-3 pr-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</td>
+                  <td className="py-3 pr-3 text-right font-black text-slate-700">{fmt(totalDepositado)}</td>
+                  <td className="py-3 pr-3 text-right text-slate-300">—</td>
+                  <td className="py-3 pr-3 text-right font-black text-emerald-600">+{fmt(totalRendimento)}</td>
+                  <td className="py-3 text-right font-black text-slate-900 text-sm">{fmt(saldoProjetado)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
+            /* ── Tabela de lançamentos ── */
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b-2 border-slate-100">
+                  <th className="text-left py-2.5 pr-3">Data</th>
+                  <th className="text-right py-2.5 pr-3">Adicionado</th>
+                  <th className="text-right py-2.5 pr-3">Anterior</th>
+                  <th className="text-right py-2.5 pr-3">Após</th>
+                  <th className="text-left py-2.5 pr-3">Obs.</th>
+                  <th className="py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {[...aportes].reverse().map(a => (
+                  <tr key={a.id} className="hover:bg-slate-50/70">
+                    <td className="py-3 pr-3 text-slate-500">{fmtDate(a.data_aporte)}</td>
+                    <td className={`py-3 pr-3 text-right font-bold ${a.valor_adicionado >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                       {a.valor_adicionado >= 0 ? '+' : ''}{fmt(a.valor_adicionado)}
                     </td>
-                    <td className="py-3 pr-4 text-right text-slate-500 text-xs">{fmt(a.valor_anterior)}</td>
-                    <td className="py-3 pr-4 text-right font-bold text-slate-800 text-xs">{fmt(a.valor_apos)}</td>
-                    <td className="py-3 pr-4 text-slate-400 text-xs">{a.observacao || '—'}</td>
+                    <td className="py-3 pr-3 text-right text-slate-400">{fmt(a.valor_anterior)}</td>
+                    <td className="py-3 pr-3 text-right font-bold text-slate-700">{fmt(a.valor_apos)}</td>
+                    <td className="py-3 pr-3 text-slate-400 italic">{a.observacao || '—'}</td>
                     <td className="py-3 text-right">
                       <button onClick={() => removerAporte(a.id)}
                         className="p-1.5 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded-lg transition-colors">
@@ -331,17 +418,16 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
 
-  // Cálculo real: baseado nos aportes registrados
-  const aportesPositivos = [...aportes].filter(a => a.valor_adicionado > 0).sort((a, b) => a.data_aporte.localeCompare(b.data_aporte))
-  const primeiroDep = aportesPositivos[0]?.data_aporte ?? null
-  const totalDepositado = calcularTotalDepositado(aportes)
-  const rendimentoReal = Math.max(0, caixinha.valor_atual - totalDepositado)
-  const taxaEfetiva = calcularTaxaEfetiva(rendimentoReal, totalDepositado, primeiroDep)
+  // Juros compostos diários por aporte: VF = P × (1 + i_diaria)^n
+  const { linhas: linhasJuros, saldoProjetado, totalDepositado, totalRendimento: rendimentoReal } =
+    calcularJurosCompostos(aportes, caixinha.taxa_rendimento_mensal)
 
-  // Dias decorridos desde o primeiro depósito
-  const diasDecorridos = primeiroDep
-    ? Math.floor((new Date().getTime() - new Date(primeiroDep + 'T12:00:00').getTime()) / 86400000)
-    : 0
+  const aportesPositivos = linhasJuros
+  const primeiroDep = aportesPositivos.length > 0
+    ? [...aportesPositivos].sort((a, b) => a.aporte.data_aporte.localeCompare(b.aporte.data_aporte))[0].aporte.data_aporte
+    : null
+  const diasDecorridos = primeiroDep ? diasCorridos(primeiroDep) : 0
+  const iDiaria = taxaDiaria(caixinha.taxa_rendimento_mensal)
 
   async function confirmarAporte(valor: number, data: string, obs: string) {
     const anterior = caixinha.valor_atual
@@ -390,23 +476,23 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
           )}
         </div>
 
-        {/* Rendimento real + taxa efetiva */}
+        {/* Rendimento por juros compostos diários */}
         {rendimentoReal > 0 && (
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
-              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Já rendeu</div>
+              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Rendimento acumulado</div>
               <div className="text-lg font-black text-emerald-700 mt-0.5">+{fmt(rendimentoReal)}</div>
               {primeiroDep && (
                 <div className="text-[10px] text-emerald-500 mt-0.5">
-                  em {diasDecorridos} dia{diasDecorridos !== 1 ? 's' : ''}
+                  em {diasDecorridos} dia{diasDecorridos !== 1 ? 's' : ''} · {aportesPositivos.length} aporte{aportesPositivos.length !== 1 ? 's' : ''}
                 </div>
               )}
             </div>
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Taxa média efetiva</div>
-              <div className="text-lg font-black text-blue-700 mt-0.5">{taxaEfetiva.toFixed(3)}%<span className="text-xs font-normal text-blue-400">/mês</span></div>
+              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Saldo projetado</div>
+              <div className="text-lg font-black text-blue-700 mt-0.5">{fmt(saldoProjetado)}</div>
               <div className="text-[10px] text-blue-400 mt-0.5">
-                Est. próx. mês: +{fmt(rendimentoMensalEst)}
+                i = {(iDiaria * 100).toFixed(4)}%/dia · {fmt(rendimentoMensalEst)}/mês
               </div>
             </div>
           </div>
@@ -414,12 +500,10 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
 
         {/* Sem aportes ainda */}
         {totalDepositado === 0 && (
-          <div className="grid grid-cols-1 gap-2">
-            <div className="bg-slate-50 rounded-xl p-3 text-right">
-              <div className="text-xs text-slate-400 font-medium">Estimativa próximo mês</div>
-              <div className="text-lg font-black text-emerald-600">+{fmt(rendimentoMensalEst)}</div>
-              <div className="text-[10px] text-slate-400">{caixinha.taxa_rendimento_mensal}% ao mês</div>
-            </div>
+          <div className="bg-slate-50 rounded-xl p-3">
+            <div className="text-xs text-slate-400 font-medium">Estimativa próximo mês</div>
+            <div className="text-lg font-black text-emerald-600">+{fmt(rendimentoMensalEst)}</div>
+            <div className="text-[10px] text-slate-400">{caixinha.taxa_rendimento_mensal}% ao mês · i = {(iDiaria * 100).toFixed(4)}%/dia</div>
           </div>
         )}
 
@@ -614,10 +698,17 @@ export default function Caixinhas() {
 
   const totalGuardado = caixinhas.reduce((acc, c) => acc + c.valor_atual, 0)
   const totalRendimento = caixinhas.reduce((acc, c) => acc + c.valor_atual * (c.taxa_rendimento_mensal / 100), 0)
-  const totalDepositadoGlobal = todosAportes
-    .filter(a => a.valor_adicionado > 0)
-    .reduce((acc, a) => acc + a.valor_adicionado, 0)
-  const totalRendimentoReal = Math.max(0, totalGuardado - totalDepositadoGlobal)
+  // Juros compostos diários somados de todas as caixinhas
+  const { totalDepositado: totalDepositadoGlobal, totalRendimento: totalRendimentoReal, saldoProjetado: totalProjetado } =
+    caixinhas.reduce((acc, c) => {
+      const ap = todosAportes.filter(a => a.caixinha_id === c.id)
+      const r  = calcularJurosCompostos(ap, c.taxa_rendimento_mensal)
+      return {
+        totalDepositado: acc.totalDepositado + r.totalDepositado,
+        totalRendimento: acc.totalRendimento + r.totalRendimento,
+        saldoProjetado:  acc.saldoProjetado  + r.saldoProjetado,
+      }
+    }, { totalDepositado: 0, totalRendimento: 0, saldoProjetado: 0 })
 
   return (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
