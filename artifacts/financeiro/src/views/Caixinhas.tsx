@@ -528,17 +528,20 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
   const [excluindo, setExcluindo] = useState(false)
 
   const meta = caixinha.meta ?? 0
-  const progressoPct = meta > 0 ? Math.min(100, (caixinha.valor_atual / meta) * 100) : 0
-  const faltam = meta > 0 ? Math.max(0, meta - caixinha.valor_atual) : null
+
+  // Juros compostos com CDI histórico real (ou fallback fixo 0,0325%/dia)
+  const { linhas: linhasJuros, saldoProjetado, totalDepositado, totalRendimento: rendimentoReal } =
+    calcularJurosCompostos(aportes, cdiUltimo, cdiMap)
+
+  // Progresso e "faltam" consideram saldo com rendimento, não apenas depósitos
+  const saldoComRendimento = saldoProjetado
+  const progressoPct = meta > 0 ? Math.min(100, (saldoComRendimento / meta) * 100) : 0
+  const faltam = meta > 0 ? Math.max(0, meta - saldoComRendimento) : null
   // Taxa efetiva: CDI atual da BCB, ou fallback fixo 0,0325%/dia
   const iD = cdiUltimo / 100
   const rendimentoMensalEst = caixinha.valor_atual * (Math.pow(1 + iD, 30) - 1)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
-
-  // Juros compostos com CDI histórico real (ou fallback fixo 0,0325%/dia)
-  const { linhas: linhasJuros, saldoProjetado, totalDepositado, totalRendimento: rendimentoReal } =
-    calcularJurosCompostos(aportes, cdiUltimo, cdiMap)
 
   const aportesPositivos = linhasJuros
   const primeiroDep = aportesPositivos.length > 0
