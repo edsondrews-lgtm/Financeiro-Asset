@@ -44,22 +44,25 @@ function diasAte(prazo: string): number {
 }
 
 /**
- * Calcula o rendimento ACUMULADO real de cada aporte desde a data do depósito até hoje.
- * Usa juros compostos: valor × ((1 + taxa/100) ^ meses - 1)
- * onde meses = dias decorridos / 30.437
+ * Soma somente os aportes de entrada (valores positivos).
+ * O rendimento real = valor_atual - totalDepositado
+ * (o saldo já carrega os juros diários embutidos)
  */
-function calcularRendimentoAcumulado(aportes: Aporte[], taxaMensal: number): number {
+function calcularTotalDepositado(aportes: Aporte[]): number {
+  return aportes.reduce((total, a) => total + (a.valor_adicionado > 0 ? a.valor_adicionado : 0), 0)
+}
+
+/**
+ * Taxa efetiva média mensal com base no rendimento real e no período decorrido.
+ * taxa = (rendimento / total_depositado) / meses_decorridos × 100
+ */
+function calcularTaxaEfetiva(rendimento: number, totalDepositado: number, primeiroDep: string | null): number {
+  if (!primeiroDep || totalDepositado <= 0 || rendimento <= 0) return 0
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
-  return aportes.reduce((total, a) => {
-    const dataDeposito = new Date(a.data_aporte + 'T12:00:00')
-    const dias = Math.max(0, (hoje.getTime() - dataDeposito.getTime()) / 86400000)
-    const meses = dias / 30.437
-    const taxa = taxaMensal / 100
-    // Juros compostos sobre o valor adicionado naquele aporte
-    const juros = Math.abs(a.valor_adicionado) * (Math.pow(1 + taxa, meses) - 1)
-    // Só contabiliza aportes positivos (entradas)
-    return total + (a.valor_adicionado > 0 ? juros : 0)
-  }, 0)
+  const inicio = new Date(primeiroDep + 'T12:00:00')
+  const dias = Math.max(1, (hoje.getTime() - inicio.getTime()) / 86400000)
+  const meses = dias / 30.437
+  return (rendimento / totalDepositado / meses) * 100
 }
 
 // ─── Modal: Aporte ────────────────────────────────────────────────────────────
@@ -324,14 +327,21 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
   const meta = caixinha.meta ?? 0
   const progressoPct = meta > 0 ? Math.min(100, (caixinha.valor_atual / meta) * 100) : 0
   const faltam = meta > 0 ? Math.max(0, meta - caixinha.valor_atual) : null
-  const rendimentoMensal = caixinha.valor_atual * (caixinha.taxa_rendimento_mensal / 100)
-  const rendimentoAcumulado = calcularRendimentoAcumulado(aportes, caixinha.taxa_rendimento_mensal)
+  const rendimentoMensalEst = caixinha.valor_atual * (caixinha.taxa_rendimento_mensal / 100)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
 
-  // Primeiro e último aporte para exibir período
-  const aportesMaisAntigos = [...aportes].filter(a => a.valor_adicionado > 0).sort((a, b) => a.data_aporte.localeCompare(b.data_aporte))
-  const primeiroDep = aportesMaisAntigos[0]?.data_aporte ?? null
+  // Cálculo real: baseado nos aportes registrados
+  const aportesPositivos = [...aportes].filter(a => a.valor_adicionado > 0).sort((a, b) => a.data_aporte.localeCompare(b.data_aporte))
+  const primeiroDep = aportesPositivos[0]?.data_aporte ?? null
+  const totalDepositado = calcularTotalDepositado(aportes)
+  const rendimentoReal = Math.max(0, caixinha.valor_atual - totalDepositado)
+  const taxaEfetiva = calcularTaxaEfetiva(rendimentoReal, totalDepositado, primeiroDep)
+
+  // Dias decorridos desde o primeiro depósito
+  const diasDecorridos = primeiroDep
+    ? Math.floor((new Date().getTime() - new Date(primeiroDep + 'T12:00:00').getTime()) / 86400000)
+    : 0
 
   async function confirmarAporte(valor: number, data: string, obs: string) {
     const anterior = caixinha.valor_atual
@@ -369,33 +379,46 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
           )}
         </div>
 
-        {/* Valores */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Saldo atual</div>
-            <div className="text-2xl font-black text-slate-800 mt-0.5">{fmt(caixinha.valor_atual)}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-slate-400 font-medium">Próximo mês (est.)</div>
-            <div className="text-lg font-black text-emerald-600 mt-0.5">+{fmt(rendimentoMensal)}<span className="text-xs font-normal text-slate-400">/mês</span></div>
-            <div className="text-[10px] text-slate-400">{caixinha.taxa_rendimento_mensal}% ao mês</div>
-          </div>
+        {/* Saldo corrigido — destaque principal */}
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-4 space-y-1">
+          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo atual (c/ rendimento)</div>
+          <div className="text-3xl font-black text-white">{fmt(caixinha.valor_atual)}</div>
+          {totalDepositado > 0 && (
+            <div className="text-xs text-slate-400">
+              Depositado: <span className="text-slate-300 font-semibold">{fmt(totalDepositado)}</span>
+            </div>
+          )}
         </div>
 
-        {/* Rendimento acumulado real */}
-        {rendimentoAcumulado > 0 && (
-          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 flex items-start justify-between gap-2">
-            <div>
-              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Rendimento acumulado</div>
-              <div className="text-lg font-black text-emerald-700 mt-0.5">+{fmt(rendimentoAcumulado)}</div>
+        {/* Rendimento real + taxa efetiva */}
+        {rendimentoReal > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Já rendeu</div>
+              <div className="text-lg font-black text-emerald-700 mt-0.5">+{fmt(rendimentoReal)}</div>
               {primeiroDep && (
                 <div className="text-[10px] text-emerald-500 mt-0.5">
-                  desde {fmtDate(primeiroDep)} · {aportesMaisAntigos.length} aporte{aportesMaisAntigos.length !== 1 ? 's' : ''}
+                  em {diasDecorridos} dia{diasDecorridos !== 1 ? 's' : ''}
                 </div>
               )}
             </div>
-            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg shrink-0">
-              <TrendingUp size={16} />
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Taxa média efetiva</div>
+              <div className="text-lg font-black text-blue-700 mt-0.5">{taxaEfetiva.toFixed(3)}%<span className="text-xs font-normal text-blue-400">/mês</span></div>
+              <div className="text-[10px] text-blue-400 mt-0.5">
+                Est. próx. mês: +{fmt(rendimentoMensalEst)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sem aportes ainda */}
+        {totalDepositado === 0 && (
+          <div className="grid grid-cols-1 gap-2">
+            <div className="bg-slate-50 rounded-xl p-3 text-right">
+              <div className="text-xs text-slate-400 font-medium">Estimativa próximo mês</div>
+              <div className="text-lg font-black text-emerald-600">+{fmt(rendimentoMensalEst)}</div>
+              <div className="text-[10px] text-slate-400">{caixinha.taxa_rendimento_mensal}% ao mês</div>
             </div>
           </div>
         )}
@@ -591,10 +614,10 @@ export default function Caixinhas() {
 
   const totalGuardado = caixinhas.reduce((acc, c) => acc + c.valor_atual, 0)
   const totalRendimento = caixinhas.reduce((acc, c) => acc + c.valor_atual * (c.taxa_rendimento_mensal / 100), 0)
-  const totalAcumulado = caixinhas.reduce((acc, c) => {
-    const ap = todosAportes.filter(a => a.caixinha_id === c.id)
-    return acc + calcularRendimentoAcumulado(ap, c.taxa_rendimento_mensal)
-  }, 0)
+  const totalDepositadoGlobal = todosAportes
+    .filter(a => a.valor_adicionado > 0)
+    .reduce((acc, a) => acc + a.valor_adicionado, 0)
+  const totalRendimentoReal = Math.max(0, totalGuardado - totalDepositadoGlobal)
 
   return (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
@@ -638,8 +661,8 @@ export default function Caixinhas() {
           <div className="bg-emerald-600 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-emerald-200 font-bold uppercase tracking-wider">Já Rendeu</div>
-              <div className="text-2xl font-black text-white mt-1">+{fmt(totalAcumulado)}</div>
-              <div className="text-[10px] text-emerald-200 mt-0.5">desde os depósitos reais</div>
+              <div className="text-2xl font-black text-white mt-1">+{fmt(totalRendimentoReal)}</div>
+              <div className="text-[10px] text-emerald-200 mt-0.5">saldo − total depositado</div>
             </div>
             <div className="p-3 bg-white/20 text-white rounded-xl"><TrendingUp size={20} /></div>
           </div>
