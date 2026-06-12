@@ -343,9 +343,7 @@ function ModalHistorico({ caixinha, aportesIniciais, cdiMap, cdiUltimo, onFechar
         </div>
 
         <div className="overflow-y-auto flex-1 -mx-1 px-1">
-          {carregando ? (
-            <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>
-          ) : aportes.length === 0 ? (
+          {aportes.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm">Nenhum aporte registrado.</div>
           ) : aba === 'rendimento' ? (
             /* ── Tabela de juros compostos diários ── */
