@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import {
   PiggyBank, Plus, X, Edit2, Trash2, History,
   Target, TrendingUp, Calendar, Check, AlertTriangle,
+  Wifi, WifiOff, RefreshCw,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -50,6 +51,73 @@ function diasAte(prazo: string): number {
  */
 function taxaDiaria(taxaDiariaPercent: number): number {
   return taxaDiariaPercent / 100
+}
+
+// ─── API BCB ───────────────────────────────────────────────────────────────────
+// Série 4389 = CDI diário em % a.d. (ex: "0.0325")
+// Fonte oficial: https://dadosabertos.bcb.gov.br
+
+interface DadosCDI {
+  valor: number      // % ao dia, ex: 0.0325
+  data: string       // "DD/MM/YYYY"
+  origem: 'bcb'
+}
+
+async function buscarCDIdiario(): Promise<DadosCDI> {
+  const url = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json'
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`BCB retornou ${res.status}`)
+  const dados = await res.json() as { data: string; valor: string }[]
+  if (!dados.length) throw new Error('Nenhum dado retornado')
+  return { valor: parseFloat(dados[0].valor), data: dados[0].data, origem: 'bcb' }
+}
+
+// ─── Componente: Botão buscar CDI ─────────────────────────────────────────────
+
+function BotaoCDI({ onBuscado }: { onBuscado: (taxa: number, data: string) => void }) {
+  const [status, setStatus] = useState<'idle' | 'carregando' | 'ok' | 'erro'>('idle')
+  const [info, setInfo] = useState<{ valor: number; data: string } | null>(null)
+
+  async function buscar() {
+    setStatus('carregando')
+    try {
+      const cdi = await buscarCDIdiario()
+      setInfo({ valor: cdi.valor, data: cdi.data })
+      setStatus('ok')
+      onBuscado(cdi.valor, cdi.data)
+    } catch {
+      setStatus('erro')
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <button type="button" onClick={buscar} disabled={status === 'carregando'}
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all w-full justify-center
+          ${status === 'ok'    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+          : status === 'erro'  ? 'bg-rose-50 border-rose-200 text-rose-600'
+          : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'}`}>
+        {status === 'carregando' ? <RefreshCw size={13} className="animate-spin" /> :
+         status === 'ok'         ? <Wifi size={13} /> :
+         status === 'erro'       ? <WifiOff size={13} /> :
+                                   <Wifi size={13} />}
+        {status === 'carregando' ? 'Consultando BCB...' :
+         status === 'ok'         ? 'CDI atualizado!' :
+         status === 'erro'       ? 'Falha — tentar novamente' :
+                                   'Buscar CDI atual (Banco Central)'}
+      </button>
+      {status === 'ok' && info && (
+        <p className="text-[10px] text-emerald-600 text-center">
+          CDI = <strong>{info.valor}%/dia</strong> em {info.data} · Fonte: api.bcb.gov.br
+        </p>
+      )}
+      {status === 'erro' && (
+        <p className="text-[10px] text-rose-500 text-center">
+          Não foi possível conectar à API do BCB. Use a taxa manualmente.
+        </p>
+      )}
+    </div>
+  )
 }
 
 /** Dias exatos entre uma data (string YYYY-MM-DD) e hoje */
@@ -384,9 +452,7 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
             <textarea value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} rows={2}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400 resize-none" />
           </div>
-          <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
-            Padrão: <strong>0,0325%/dia</strong> → VF = P × (1 + 0,000325)^n — taxa fixa diária CDI Nubank
-          </div>
+          <BotaoCDI onBuscado={(taxa) => setForm(f => ({ ...f, taxa_rendimento_mensal: taxa.toString() }))} />
           <div className="flex gap-2 justify-end pt-1">
             <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
             <button type="submit" disabled={salvando}
@@ -658,6 +724,9 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
             step="0.0001" min="0"
             className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
           <p className="text-[10px] text-slate-400 mt-1">Padrão: 0,0325%/dia → VF = P × (1,000325)^n</p>
+        </div>
+        <div className="md:col-span-2">
+          <BotaoCDI onBuscado={(taxa) => setForm(f => ({ ...f, taxa_rendimento_mensal: taxa.toString() }))} />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição</label>
