@@ -591,9 +591,9 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-4 space-y-1">
           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo c/ rendimento</div>
           <div className="text-3xl font-black text-white">{fmt(saldoProjetado > 0 ? saldoProjetado : caixinha.valor_atual)}</div>
-          {totalDepositado > 0 && (
+          {cdiUltimo > 0 && (
             <div className="text-xs text-slate-400">
-              Depositado: <span className="text-slate-300 font-semibold">{fmt(totalDepositado)}</span>
+              i = <span className="text-slate-300 font-semibold">{cdiUltimo.toFixed(4)}%/dia</span>
             </div>
           )}
         </div>
@@ -611,10 +611,10 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
               )}
             </div>
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Saldo projetado</div>
-              <div className="text-lg font-black text-blue-700 mt-0.5">{fmt(saldoProjetado)}</div>
+              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Saldo depositado</div>
+              <div className="text-lg font-black text-blue-700 mt-0.5">{fmt(totalDepositado)}</div>
               <div className="text-[10px] text-blue-400 mt-0.5">
-                i = {(iDiaria * 100).toFixed(4)}%/dia · {fmt(rendimentoMensalEst)}/mês
+                {fmt(rendimentoMensalEst)}/mês estimado
               </div>
             </div>
           </div>
