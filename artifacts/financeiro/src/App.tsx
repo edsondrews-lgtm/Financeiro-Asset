@@ -3,24 +3,39 @@ import { supabase } from './lib/supabaseClient';
 import ControleEmpresa from './views/ControleEmpresa';
 import SaidasPainel from './views/SaidasPainel';
 import DashboardImovel from './components/DashboardImovel';
-import { LayoutDashboard, Building2, Home, User, Wallet, ArrowUpRight, DollarSign, Percent, TrendingUp } from 'lucide-react';
+import PasswordGate from './components/PasswordGate';
+import CarteiraInvestimentos from './views/CarteiraInvestimentos';
+import Consorcios from './views/Consorcios';
+import Caixinhas from './views/Caixinhas';
+import {
+  LayoutDashboard, Building2, Home, User, Wallet,
+  ArrowUpRight, DollarSign, Percent, TrendingUp,
+  PieChart, FileText, ChevronDown, PiggyBank,
+} from 'lucide-react';
 
-interface Nota {
-  valor: number;
-}
-
-interface Despesa {
-  valor: number;
-  periodicidade: string;
-}
+interface Nota { valor: number }
+interface Despesa { valor: number; periodicidade: string }
 
 export default function App() {
   const [abaAtiva, setAbaAtiva] = useState('geral');
+  const [subAbaInvestimento, setSubAbaInvestimento] = useState('acoes');
+  const [menuInvestimentosAberto, setMenuInvestimentosAberto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notas, setNotas] = useState<Nota[]>([]);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
 
   useEffect(() => { buscarDadosGlobais(); }, []);
+
+  useEffect(() => {
+    function fecharMenu(e: MouseEvent) {
+      const alvo = e.target as HTMLElement;
+      if (!alvo.closest('#menu-investimentos')) {
+        setMenuInvestimentosAberto(false);
+      }
+    }
+    document.addEventListener('mousedown', fecharMenu);
+    return () => document.removeEventListener('mousedown', fecharMenu);
+  }, []);
 
   async function buscarDadosGlobais() {
     setLoading(true);
@@ -29,8 +44,11 @@ export default function App() {
       if (dataNotas) setNotas(dataNotas);
       const { data: dataDespesas } = await supabase.from('empresa_despesas').select('*');
       if (dataDespesas) setDespesas(dataDespesas);
-    } catch (error) { console.error('Erro ao consolidar painel geral:', error); }
-    finally { setLoading(false); }
+    } catch (error) {
+      console.error('Erro ao consolidar painel geral:', error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const totalFaturamento = notas.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
@@ -46,8 +64,19 @@ export default function App() {
     { id: 'empresa', label: 'Empresa', icon: <Building2 size={14} /> },
     { id: 'imoveis', label: 'Imóveis', icon: <Home size={14} /> },
     { id: 'pessoal', label: 'Pessoal', icon: <User size={14} /> },
-    { id: 'investimentos', label: 'Investimentos', icon: <Wallet size={14} />, disabled: true },
   ];
+
+  const subItensInvestimento = [
+    { id: 'acoes', label: 'Ações', icon: <PieChart size={13} /> },
+    { id: 'consorcios', label: 'Consórcio', icon: <FileText size={13} /> },
+    { id: 'caixinhas', label: 'Caixinhas', icon: <PiggyBank size={13} /> },
+  ];
+
+  function selecionarSubAba(sub: string) {
+    setSubAbaInvestimento(sub);
+    setAbaAtiva('investimentos');
+    setMenuInvestimentosAberto(false);
+  }
 
   const PainelGeral = () => (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
@@ -114,39 +143,93 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-600">
-      <header className="bg-white border-b border-slate-200/80 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <span className="text-lg font-black tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            FinançasHub
-          </span>
-          <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/40">
-            {navItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => !item.disabled && setAbaAtiva(item.id)}
-                disabled={item.disabled}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                  item.disabled
-                    ? 'text-slate-300 cursor-not-allowed'
-                    : abaAtiva === item.id
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                {item.icon} {item.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </header>
+    <PasswordGate>
+      <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-600">
+        <header className="bg-white border-b border-slate-200/80 sticky top-0 z-40 shadow-sm">
+          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <span className="text-lg font-black tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              FinançasHub
+            </span>
 
-      <main>
-        {abaAtiva === 'geral' && <PainelGeral />}
-        {abaAtiva === 'empresa' && <ControleEmpresa />}
-        {abaAtiva === 'pessoal' && <SaidasPainel />}
-        {abaAtiva === 'imoveis' && <DashboardImovel />}
-      </main>
-    </div>
+            <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/40">
+              {navItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setAbaAtiva(item.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                    abaAtiva === item.id
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {item.icon} {item.label}
+                </button>
+              ))}
+
+              <div id="menu-investimentos" className="relative">
+                <button
+                  onClick={() => setMenuInvestimentosAberto(v => !v)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                    abaAtiva === 'investimentos'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Wallet size={14} />
+                  Investimentos
+                  <ChevronDown size={12} className={`transition-transform ${menuInvestimentosAberto ? 'rotate-180' : ''}`} />
+                </button>
+
+                {menuInvestimentosAberto && (
+                  <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 min-w-[150px] z-50">
+                    {subItensInvestimento.map(sub => (
+                      <button
+                        key={sub.id}
+                        onClick={() => selecionarSubAba(sub.id)}
+                        className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition-colors text-left ${
+                          abaAtiva === 'investimentos' && subAbaInvestimento === sub.id
+                            ? 'text-blue-600 bg-blue-50'
+                            : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {sub.icon} {sub.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </nav>
+          </div>
+
+          {abaAtiva === 'investimentos' && (
+            <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
+              {subItensInvestimento.map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setSubAbaInvestimento(sub.id)}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    subAbaInvestimento === sub.id
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {sub.icon} {sub.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </header>
+
+        <main>
+          {abaAtiva === 'geral' && <PainelGeral />}
+          {abaAtiva === 'empresa' && <ControleEmpresa />}
+          {abaAtiva === 'pessoal' && <SaidasPainel />}
+          {abaAtiva === 'imoveis' && <DashboardImovel />}
+          {abaAtiva === 'investimentos' && subAbaInvestimento === 'acoes' && <CarteiraInvestimentos />}
+          {abaAtiva === 'investimentos' && subAbaInvestimento === 'consorcios' && <Consorcios />}
+          {abaAtiva === 'investimentos' && subAbaInvestimento === 'caixinhas' && <Caixinhas />}
+        </main>
+      </div>
+    </PasswordGate>
   );
 }
