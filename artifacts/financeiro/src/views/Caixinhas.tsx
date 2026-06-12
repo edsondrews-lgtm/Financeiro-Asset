@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import {
   PiggyBank, Plus, X, Edit2, Trash2, History,
   Target, TrendingUp, Calendar, Check, AlertTriangle,
+  Wifi, WifiOff, RefreshCw,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -41,6 +42,178 @@ function diasAte(prazo: string): number {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
   const alvo = new Date(prazo + 'T12:00:00')
   return Math.max(0, Math.ceil((alvo.getTime() - hoje.getTime()) / 86400000))
+}
+
+/**
+ * Retorna a taxa diária como decimal.
+ * O campo taxa_rendimento_mensal armazena a taxa DIÁRIA em % (ex: 0.0325).
+ * i = taxa / 100 → ex: 0.0325 / 100 = 0.000325
+ */
+function taxaDiaria(taxaDiariaPercent: number): number {
+  return taxaDiariaPercent / 100
+}
+
+// ─── API BCB — CDI histórico ───────────────────────────────────────────────────
+// Série 4389 = CDI diário em % a.d. (ex: "0.0325")
+// Fonte: https://dadosabertos.bcb.gov.br
+
+type CdiMap = Map<string, number> // chave: "YYYY-MM-DD", valor: taxa %/dia
+
+function fmtDataBCB(d: Date): string {
+  const dd   = String(d.getDate()).padStart(2, '0')
+  const mm   = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy}`
+}
+
+/**
+ * Converte taxa CDI para % diária.
+ * A BCB série 4389 retorna a taxa ANUAL (% a.a.), ex: 14.4.
+ * Fórmula: i_diária = ((1 + r_anual/100)^(1/252) - 1) × 100
+ * Se já vier como diária (valor < 1), mantém direto.
+ */
+function cdiAnualParaDiario(valorAnual: number): number {
+  if (valorAnual <= 0) return 0
+  if (valorAnual < 1) return valorAnual // já é diária (% a.d.)
+  // Converte % a.a. → % a.d. com 252 dias úteis/ano
+  return (Math.pow(1 + valorAnual / 100, 1 / 252) - 1) * 100
+}
+
+async function buscarHistoricoCDI(dataInicio: Date): Promise<CdiMap> {
+  const hoje = new Date()
+  const url  = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados?formato=json`
+            + `&dataInicial=${fmtDataBCB(dataInicio)}&dataFinal=${fmtDataBCB(hoje)}`
+  const res  = await fetch(url)
+  if (!res.ok) throw new Error(`BCB ${res.status}`)
+  const dados = await res.json() as { data: string; valor: string }[]
+  const map: CdiMap = new Map()
+  for (const d of dados) {
+    // BCB retorna "DD/MM/YYYY" → converte para "YYYY-MM-DD"
+    const [dd, mm, yyyy] = d.data.split('/')
+    const valorDiario = cdiAnualParaDiario(parseFloat(d.valor))
+    map.set(`${yyyy}-${mm}-${dd}`, valorDiario)
+  }
+  return map
+}
+
+// ─── Componente: Botão buscar CDI (para formulários) ──────────────────────────
+
+function BotaoCDI({ onBuscado }: { onBuscado: (taxa: number, data: string) => void }) {
+  const [status, setStatus] = useState<'idle' | 'carregando' | 'ok' | 'erro'>('idle')
+  const [info, setInfo] = useState<{ valor: number; data: string } | null>(null)
+
+  async function buscar() {
+    setStatus('carregando')
+    try {
+      const map = await buscarHistoricoCDI(new Date())
+      const entries = [...map.entries()].sort(([a], [b]) => b.localeCompare(a))
+      if (!entries.length) throw new Error('vazio')
+      const [dataKey, valor] = entries[0]
+      const [yyyy, mm, dd] = dataKey.split('-')
+      const dataFmt = `${dd}/${mm}/${yyyy}`
+      setInfo({ valor, data: dataFmt })
+      setStatus('ok')
+      onBuscado(valor, dataFmt)
+    } catch {
+      setStatus('erro')
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <button type="button" onClick={buscar} disabled={status === 'carregando'}
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all w-full justify-center
+          ${status === 'ok'    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+          : status === 'erro'  ? 'bg-rose-50 border-rose-200 text-rose-600'
+          : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'}`}>
+        {status === 'carregando' ? <RefreshCw size={13} className="animate-spin" /> :
+         status === 'ok'         ? <Wifi size={13} /> :
+         status === 'erro'       ? <WifiOff size={13} /> :
+                                   <Wifi size={13} />}
+        {status === 'carregando' ? 'Consultando BCB...' :
+         status === 'ok'         ? 'CDI atualizado!' :
+         status === 'erro'       ? 'Falha — tentar novamente' :
+                                   'Buscar CDI atual (Banco Central)'}
+      </button>
+      {status === 'ok' && info && (
+        <p className="text-[10px] text-emerald-600 text-center">
+          CDI = <strong>{info.valor}%/dia</strong> em {info.data} · Fonte: api.bcb.gov.br
+        </p>
+      )}
+      {status === 'erro' && (
+        <p className="text-[10px] text-rose-500 text-center">
+          Não foi possível conectar à API do BCB. Use a taxa manualmente.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** Dias exatos entre uma data (string YYYY-MM-DD) e hoje */
+function diasCorridos(data: string): number {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const dep  = new Date(data + 'T12:00:00')
+  return Math.max(0, Math.floor((hoje.getTime() - dep.getTime()) / 86400000))
+}
+
+interface LinhaRendimento {
+  aporte: Aporte
+  dias: number
+  valorInicial: number
+  rendimento: number
+  valorFinal: number
+}
+
+/**
+ * Processa cada aporte com juros compostos diários.
+ * - Se cdiMap fornecido: usa o CDI real de cada dia útil (Banco Central).
+ *   VF = P × ∏(1 + cdi[d]/100) para cada dia d desde o depósito até ontem.
+ * - Fallback: VF = P × (1 + taxaFallbackPct/100)^n (taxa fixa).
+ */
+function calcularJurosCompostos(
+  aportes: Aporte[],
+  taxaFallbackPct: number,
+  cdiMap: CdiMap = new Map()
+): { linhas: LinhaRendimento[]; saldoProjetado: number; totalDepositado: number; totalRendimento: number } {
+  const hoje    = new Date(); hoje.setHours(0, 0, 0, 0)
+  const hojeStr = hoje.toISOString().split('T')[0]
+
+  // Pré-processa CDI: log acumulado por data útil (exclui hoje pois não fechou)
+  const sorted = [...cdiMap.entries()]
+    .filter(([d]) => d < hojeStr)
+    .sort(([a], [b]) => a.localeCompare(b))
+
+  const cumLog: { date: string; log: number }[] = []
+  let running = 0
+  for (const [date, taxa] of sorted) {
+    running += Math.log1p(taxa / 100)
+    cumLog.push({ date, log: running })
+  }
+  const totalLog = running
+  const usaCDI   = cumLog.length > 0
+
+  // Retorna log acumulado estritamente antes de dateStr
+  function logAntesDe(dateStr: string): number {
+    let lo = 0, hi = cumLog.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cumLog[mid].date < dateStr) lo = mid + 1; else hi = mid }
+    return lo === 0 ? 0 : cumLog[lo - 1].log
+  }
+
+  const linhas: LinhaRendimento[] = aportes
+    .filter(a => a.valor_adicionado > 0)
+    .map(a => {
+      const n    = diasCorridos(a.data_aporte)
+      const fator = usaCDI
+        ? Math.exp(totalLog - logAntesDe(a.data_aporte))
+        : Math.pow(1 + taxaFallbackPct / 100, n)
+      const vf        = a.valor_adicionado * fator
+      const rendimento = vf - a.valor_adicionado
+      return { aporte: a, dias: n, valorInicial: a.valor_adicionado, rendimento, valorFinal: vf }
+    })
+
+  const totalDepositado = linhas.reduce((s, l) => s + l.valorInicial, 0)
+  const saldoProjetado  = linhas.reduce((s, l) => s + l.valorFinal, 0)
+  return { linhas, saldoProjetado, totalDepositado, totalRendimento: saldoProjetado - totalDepositado }
 }
 
 // ─── Modal: Aporte ────────────────────────────────────────────────────────────
@@ -120,16 +293,15 @@ function ModalAporte({ caixinha, onFechar, onConfirmar }: {
 
 // ─── Modal: Histórico ─────────────────────────────────────────────────────────
 
-function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: () => void }) {
-  const [aportes, setAportes] = useState<Aporte[]>([])
-  const [carregando, setCarregando] = useState(true)
-
-  useEffect(() => {
-    supabase.from('caixinhas_aportes').select('*')
-      .eq('caixinha_id', caixinha.id)
-      .order('data_aporte', { ascending: false })
-      .then(({ data }) => { setAportes(data || []); setCarregando(false) })
-  }, [caixinha.id])
+function ModalHistorico({ caixinha, aportesIniciais, cdiMap, cdiUltimo, onFechar }: {
+  caixinha: Caixinha
+  aportesIniciais: Aporte[]
+  cdiMap: CdiMap
+  cdiUltimo: number
+  onFechar: () => void
+}) {
+  const [aportes, setAportes] = useState<Aporte[]>(aportesIniciais)
+  const [aba, setAba] = useState<'lancamentos' | 'rendimento'>('rendimento')
 
   async function removerAporte(id: string) {
     if (!confirm('Remover este registro?')) return
@@ -137,9 +309,16 @@ function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: 
     setAportes(prev => prev.filter(a => a.id !== id))
   }
 
+  const { linhas, saldoProjetado, totalDepositado, totalRendimento } =
+    calcularJurosCompostos(aportes, cdiUltimo, cdiMap)
+
+  const iDiaria = cdiUltimo / 100
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-2xl space-y-4 max-h-[85vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-3xl space-y-4 max-h-[90vh] flex flex-col">
+
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><History size={18} /></div>
@@ -148,46 +327,96 @@ function ModalHistorico({ caixinha, onFechar }: { caixinha: Caixinha; onFechar: 
           <button onClick={onFechar} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16} /></button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        {/* Resumo de topo */}
+        <div className="grid grid-cols-3 gap-3">
           <div className="bg-slate-50 rounded-xl p-3 text-center">
-            <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Valor Atual</div>
-            <div className="text-lg font-black text-emerald-600 mt-0.5">{fmt(caixinha.valor_atual)}</div>
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Depositado</div>
+            <div className="text-base font-black text-slate-700 mt-0.5">{fmt(totalDepositado)}</div>
           </div>
-          {caixinha.meta && (
-            <div className="bg-slate-50 rounded-xl p-3 text-center">
-              <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Meta Total</div>
-              <div className="text-lg font-black text-blue-600 mt-0.5">{fmt(caixinha.meta)}</div>
-            </div>
-          )}
+          <div className="bg-emerald-50 rounded-xl p-3 text-center">
+            <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Rendimento Projetado</div>
+            <div className="text-base font-black text-emerald-700 mt-0.5">+{fmt(totalRendimento)}</div>
+            <div className="text-[10px] text-emerald-500">i = {(iDiaria * 100).toFixed(4)}%/dia</div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-3 text-center">
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo Projetado</div>
+            <div className="text-base font-black text-white mt-0.5">{fmt(saldoProjetado)}</div>
+          </div>
         </div>
 
-        <div className="overflow-y-auto flex-1">
-          {carregando ? (
-            <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>
-          ) : aportes.length === 0 ? (
+        {/* Abas */}
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+          <button onClick={() => setAba('rendimento')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${aba === 'rendimento' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            Juros por Aporte
+          </button>
+          <button onClick={() => setAba('lancamentos')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${aba === 'lancamentos' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            Lançamentos
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 -mx-1 px-1">
+          {aportes.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm">Nenhum aporte registrado.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white">
-                <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
-                  <th className="text-left py-2 pr-4">Data</th>
-                  <th className="text-right py-2 pr-4">Valor Adicionado</th>
-                  <th className="text-right py-2 pr-4">Valor Anterior</th>
-                  <th className="text-right py-2 pr-4">Valor Após</th>
-                  <th className="text-left py-2 pr-4">Observação</th>
-                  <th className="py-2"></th>
+          ) : aba === 'rendimento' ? (
+            /* ── Tabela de juros compostos diários ── */
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b-2 border-slate-100">
+                  <th className="text-left py-2.5 pr-3">Data</th>
+                  <th className="text-right py-2.5 pr-3">Valor Inicial</th>
+                  <th className="text-right py-2.5 pr-3">Dias Corridos</th>
+                  <th className="text-right py-2.5 pr-3">Rendimento</th>
+                  <th className="text-right py-2.5">Valor Final</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {aportes.map(a => (
-                  <tr key={a.id} className="hover:bg-slate-50/60">
-                    <td className="py-3 pr-4 text-slate-500 text-xs">{fmtDate(a.data_aporte)}</td>
-                    <td className={`py-3 pr-4 text-right font-bold text-xs ${a.valor_adicionado >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                {linhas.map(l => (
+                  <tr key={l.aporte.id} className="hover:bg-slate-50/70">
+                    <td className="py-3 pr-3 text-slate-600 font-medium">{fmtDate(l.aporte.data_aporte)}</td>
+                    <td className="py-3 pr-3 text-right text-slate-700 font-semibold">{fmt(l.valorInicial)}</td>
+                    <td className="py-3 pr-3 text-right">
+                      <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">{l.dias}d</span>
+                    </td>
+                    <td className="py-3 pr-3 text-right font-bold text-emerald-600">+{fmt(l.rendimento)}</td>
+                    <td className="py-3 text-right font-black text-slate-800">{fmt(l.valorFinal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-200 bg-slate-50 sticky bottom-0">
+                <tr>
+                  <td className="py-3 pr-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</td>
+                  <td className="py-3 pr-3 text-right font-black text-slate-700">{fmt(totalDepositado)}</td>
+                  <td className="py-3 pr-3 text-right text-slate-300">—</td>
+                  <td className="py-3 pr-3 text-right font-black text-emerald-600">+{fmt(totalRendimento)}</td>
+                  <td className="py-3 text-right font-black text-slate-900 text-sm">{fmt(saldoProjetado)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
+            /* ── Tabela de lançamentos ── */
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b-2 border-slate-100">
+                  <th className="text-left py-2.5 pr-3">Data</th>
+                  <th className="text-right py-2.5 pr-3">Adicionado</th>
+                  <th className="text-right py-2.5 pr-3">Anterior</th>
+                  <th className="text-right py-2.5 pr-3">Após</th>
+                  <th className="text-left py-2.5 pr-3">Obs.</th>
+                  <th className="py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {[...aportes].reverse().map(a => (
+                  <tr key={a.id} className="hover:bg-slate-50/70">
+                    <td className="py-3 pr-3 text-slate-500">{fmtDate(a.data_aporte)}</td>
+                    <td className={`py-3 pr-3 text-right font-bold ${a.valor_adicionado >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                       {a.valor_adicionado >= 0 ? '+' : ''}{fmt(a.valor_adicionado)}
                     </td>
-                    <td className="py-3 pr-4 text-right text-slate-500 text-xs">{fmt(a.valor_anterior)}</td>
-                    <td className="py-3 pr-4 text-right font-bold text-slate-800 text-xs">{fmt(a.valor_apos)}</td>
-                    <td className="py-3 pr-4 text-slate-400 text-xs">{a.observacao || '—'}</td>
+                    <td className="py-3 pr-3 text-right text-slate-400">{fmt(a.valor_anterior)}</td>
+                    <td className="py-3 pr-3 text-right font-bold text-slate-700">{fmt(a.valor_apos)}</td>
+                    <td className="py-3 pr-3 text-slate-400 italic">{a.observacao || '—'}</td>
                     <td className="py-3 text-right">
                       <button onClick={() => removerAporte(a.id)}
                         className="p-1.5 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded-lg transition-colors">
@@ -221,7 +450,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
     meta: caixinha.meta?.toString() ?? '',
     prazo: caixinha.prazo ?? '',
     descricao: caixinha.descricao ?? '',
-    taxa_rendimento_mensal: caixinha.taxa_rendimento_mensal.toString(),
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -234,7 +462,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
       meta: form.meta ? parseFloat(form.meta) : null,
       prazo: form.prazo || null,
       descricao: form.descricao || null,
-      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.87,
     }).eq('id', caixinha.id)
     setSalvando(false)
     if (error) { setErro('Erro: ' + error.message); return }
@@ -259,7 +486,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
             { label: 'Nome *', key: 'nome', type: 'text', placeholder: 'Ex: Reserva Emergência' },
             { label: 'Meta (R$)', key: 'meta', type: 'number', placeholder: '10000' },
             { label: 'Prazo', key: 'prazo', type: 'date', placeholder: '' },
-            { label: 'Rendimento mensal (%)', key: 'taxa_rendimento_mensal', type: 'number', placeholder: '0.87' },
           ].map(f => (
             <div key={f.key}>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">{f.label}</label>
@@ -273,9 +499,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição</label>
             <textarea value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} rows={2}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400 resize-none" />
-          </div>
-          <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
-            Padrão: <strong>0,87%/mês</strong> = R$ 87 líquidos a cada R$ 10.000 (100% CDI Nubank)
           </div>
           <div className="flex gap-2 justify-end pt-1">
             <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
@@ -292,18 +515,41 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
 
 // ─── Card da Caixinha ─────────────────────────────────────────────────────────
 
-function CardCaixinha({ caixinha, onAtualizar }: { caixinha: Caixinha; onAtualizar: () => void }) {
+function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
+  caixinha: Caixinha
+  aportes: Aporte[]
+  cdiMap: CdiMap
+  cdiUltimo: number
+  onAtualizar: () => void
+}) {
   const [modalAporte, setModalAporte] = useState(false)
   const [modalHistorico, setModalHistorico] = useState(false)
   const [modalEditar, setModalEditar] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
 
   const meta = caixinha.meta ?? 0
-  const progressoPct = meta > 0 ? Math.min(100, (caixinha.valor_atual / meta) * 100) : 0
-  const faltam = meta > 0 ? Math.max(0, meta - caixinha.valor_atual) : null
-  const rendimentoMensal = caixinha.valor_atual * (caixinha.taxa_rendimento_mensal / 100)
+
+  // Juros compostos com CDI histórico real (ou fallback fixo 0,0325%/dia)
+  const { linhas: linhasJuros, saldoProjetado, totalDepositado, totalRendimento: rendimentoReal } =
+    calcularJurosCompostos(aportes, cdiUltimo, cdiMap)
+
+  // Progresso e "faltam" consideram saldo com rendimento, não apenas depósitos
+  const saldoComRendimento = saldoProjetado
+  const progressoPct = meta > 0 ? Math.min(100, (saldoComRendimento / meta) * 100) : 0
+  const faltam = meta > 0 ? Math.max(0, meta - saldoComRendimento) : null
+  // Taxa efetiva: CDI atual da BCB, ou fallback fixo 0,0325%/dia
+  const iD = cdiUltimo / 100
+  // CDI rende em dias úteis: 252/ano ÷ 12 meses = 21 dias úteis/mês
+  const rendimentoMensalEst = caixinha.valor_atual * (Math.pow(1 + iD, 21) - 1)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
+
+  const aportesPositivos = linhasJuros
+  const primeiroDep = aportesPositivos.length > 0
+    ? [...aportesPositivos].sort((a, b) => a.aporte.data_aporte.localeCompare(b.aporte.data_aporte))[0].aporte.data_aporte
+    : null
+  const diasDecorridos = primeiroDep ? diasCorridos(primeiroDep) : 0
+  const iDiaria = iD
 
   async function confirmarAporte(valor: number, data: string, obs: string) {
     const anterior = caixinha.valor_atual
@@ -341,18 +587,47 @@ function CardCaixinha({ caixinha, onAtualizar }: { caixinha: Caixinha; onAtualiz
           )}
         </div>
 
-        {/* Valores */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Saldo atual</div>
-            <div className="text-2xl font-black text-slate-800 mt-0.5">{fmt(caixinha.valor_atual)}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-slate-400 font-medium">Rendimento estimado</div>
-            <div className="text-lg font-black text-emerald-600 mt-0.5">+{fmt(rendimentoMensal)}<span className="text-xs font-normal text-slate-400">/mês</span></div>
-            <div className="text-[10px] text-slate-400">{caixinha.taxa_rendimento_mensal}% ao mês</div>
-          </div>
+        {/* Saldo corrigido — destaque principal */}
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-4 space-y-1">
+          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo c/ rendimento</div>
+          <div className="text-3xl font-black text-white">{fmt(saldoProjetado > 0 ? saldoProjetado : caixinha.valor_atual)}</div>
+          {cdiUltimo > 0 && (
+            <div className="text-xs text-slate-400">
+              i = <span className="text-slate-300 font-semibold">{cdiUltimo.toFixed(4)}%/dia</span>
+            </div>
+          )}
         </div>
+
+        {/* Rendimento por juros compostos diários */}
+        {rendimentoReal > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Rendimento acumulado</div>
+              <div className="text-lg font-black text-emerald-700 mt-0.5">+{fmt(rendimentoReal)}</div>
+              {primeiroDep && (
+                <div className="text-[10px] text-emerald-500 mt-0.5">
+                  em {diasDecorridos} dia{diasDecorridos !== 1 ? 's' : ''} · {aportesPositivos.length} aporte{aportesPositivos.length !== 1 ? 's' : ''}
+                </div>
+              )}
+            </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Saldo depositado</div>
+              <div className="text-lg font-black text-blue-700 mt-0.5">{fmt(totalDepositado)}</div>
+              <div className="text-[10px] text-blue-400 mt-0.5">
+                {fmt(rendimentoMensalEst)}/mês estimado
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sem aportes ainda */}
+        {totalDepositado === 0 && (
+          <div className="bg-slate-50 rounded-xl p-3">
+            <div className="text-xs text-slate-400 font-medium">Estimativa próximo mês</div>
+            <div className="text-lg font-black text-emerald-600">+{fmt(rendimentoMensalEst)}</div>
+            <div className="text-[10px] text-slate-400">i = {cdiUltimo.toFixed(4)}%/dia · {fmt(rendimentoMensalEst)}/mês (30d)</div>
+          </div>
+        )}
 
         {/* Barra de progresso */}
         {meta > 0 && (
@@ -438,7 +713,13 @@ function CardCaixinha({ caixinha, onAtualizar }: { caixinha: Caixinha; onAtualiz
         <ModalAporte caixinha={caixinha} onFechar={() => setModalAporte(false)} onConfirmar={confirmarAporte} />
       )}
       {modalHistorico && (
-        <ModalHistorico caixinha={caixinha} onFechar={() => setModalHistorico(false)} />
+        <ModalHistorico
+          caixinha={caixinha}
+          aportesIniciais={aportes}
+          cdiMap={cdiMap}
+          cdiUltimo={cdiUltimo}
+          onFechar={() => setModalHistorico(false)}
+        />
       )}
       {modalEditar && (
         <ModalEditar caixinha={caixinha} onFechar={() => setModalEditar(false)} onSalvo={() => { setModalEditar(false); onAtualizar() }} />
@@ -451,7 +732,7 @@ function CardCaixinha({ caixinha, onAtualizar }: { caixinha: Caixinha; onAtualiz
 
 function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar: () => void }) {
   const [form, setForm] = useState({
-    nome: '', meta: '', prazo: '', descricao: '', taxa_rendimento_mensal: '0.87',
+    nome: '', meta: '', prazo: '', descricao: '',
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -466,7 +747,7 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
       meta: form.meta ? parseFloat(form.meta) : null,
       prazo: form.prazo || null,
       descricao: form.descricao || null,
-      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.87,
+      taxa_rendimento_mensal: 0.0325, // mantido para compatibilidade com coluna NOT NULL; cálculos usam CDI da BCB
     })
     setSalvando(false)
     if (error) { setErro('Erro: ' + error.message); return }
@@ -497,13 +778,6 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
             className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
         </div>
         <div>
-          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Rendimento mensal (%)</label>
-          <input type="number" value={form.taxa_rendimento_mensal} onChange={e => setForm({ ...form, taxa_rendimento_mensal: e.target.value })}
-            step="0.01" min="0"
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
-          <p className="text-[10px] text-slate-400 mt-1">Padrão: 0,87% = R$87/mês por R$10.000 (100% CDI Nubank)</p>
-        </div>
-        <div>
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição</label>
           <input type="text" value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })}
             placeholder="Ex: Reserva para entrada do imóvel"
@@ -526,20 +800,66 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
 
 export default function Caixinhas() {
   const [caixinhas, setCaixinhas] = useState<Caixinha[]>([])
+  const [todosAportes, setTodosAportes] = useState<Aporte[]>([])
   const [mostrarForm, setMostrarForm] = useState(false)
   const [carregando, setCarregando] = useState(true)
 
+  // CDI histórico da API do Banco Central
+  const [cdiMap, setCdiMap]       = useState<CdiMap>(new Map())
+  const [cdiUltimo, setCdiUltimo] = useState<number>(0)
+  const [cdiStatus, setCdiStatus] = useState<'idle' | 'carregando' | 'ok' | 'erro'>('idle')
+
   async function carregar() {
     setCarregando(true)
-    const { data } = await supabase.from('caixinhas').select('*').order('created_at', { ascending: true })
-    setCaixinhas(data || [])
+    const [{ data: cx }, { data: ap }] = await Promise.all([
+      supabase.from('caixinhas').select('*').order('created_at', { ascending: true }),
+      supabase.from('caixinhas_aportes').select('*').order('data_aporte', { ascending: true }),
+    ])
+    const caixinhasCarregadas = cx || []
+    const aportesCarregados   = ap || []
+    setCaixinhas(caixinhasCarregadas)
+    setTodosAportes(aportesCarregados)
     setCarregando(false)
+
+    // Busca CDI histórico a partir do primeiro aporte registrado
+    const positivos = aportesCarregados.filter(a => a.valor_adicionado > 0)
+    if (positivos.length === 0) return
+    const maisAntigo = [...positivos].sort((a, b) => a.data_aporte.localeCompare(b.data_aporte))[0]
+    const dataInicio = new Date(maisAntigo.data_aporte + 'T12:00:00')
+
+    setCdiStatus('carregando')
+    try {
+      const map = await buscarHistoricoCDI(dataInicio)
+      setCdiMap(map)
+      // Pega o último valor útil
+      const ultimo = [...map.entries()].sort(([a], [b]) => b.localeCompare(a))[0]
+      if (ultimo) setCdiUltimo(ultimo[1])
+      setCdiStatus('ok')
+    } catch {
+      setCdiStatus('erro')
+    }
   }
 
   useEffect(() => { carregar() }, [])
 
   const totalGuardado = caixinhas.reduce((acc, c) => acc + c.valor_atual, 0)
-  const totalRendimento = caixinhas.reduce((acc, c) => acc + c.valor_atual * (c.taxa_rendimento_mensal / 100), 0)
+  const taxaRef = cdiUltimo > 0 ? cdiUltimo : 0.0325
+  // Estimativa mensal consolidada usando taxa atual do CDI
+  // CDI rende em dias úteis: 252/ano ÷ 12 meses = 21 dias úteis/mês
+  const DIAS_UTEIS_MES = 21
+  const totalRendimentoMensal = caixinhas.reduce((acc, c) => {
+    const iD = taxaRef / 100
+    return acc + c.valor_atual * (Math.pow(1 + iD, DIAS_UTEIS_MES) - 1)
+  }, 0)
+  // Juros compostos com CDI histórico real para todas as caixinhas
+  const { totalDepositadoGlobal, totalRendimentoReal } = caixinhas.reduce((acc, c) => {
+    const ap = todosAportes.filter(a => a.caixinha_id === c.id)
+    const r  = calcularJurosCompostos(ap, taxaRef, cdiMap)
+    return {
+      totalDepositadoGlobal: acc.totalDepositadoGlobal + r.totalDepositado,
+      totalRendimentoReal:   acc.totalRendimentoReal   + r.totalRendimento,
+    }
+  }, { totalDepositadoGlobal: 0, totalRendimentoReal: 0 })
 
   return (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
@@ -555,15 +875,32 @@ export default function Caixinhas() {
             <p className="text-slate-500 text-sm">Metas de poupança com rendimento automático</p>
           </div>
         </div>
-        <button onClick={() => setMostrarForm(v => !v)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
-          {mostrarForm ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Nova caixinha</>}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Badge CDI */}
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border
+            ${cdiStatus === 'ok'         ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+            : cdiStatus === 'erro'       ? 'bg-rose-50 border-rose-200 text-rose-500'
+            : cdiStatus === 'carregando' ? 'bg-blue-50 border-blue-200 text-blue-600'
+            : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+            {cdiStatus === 'carregando' ? <RefreshCw size={11} className="animate-spin" /> :
+             cdiStatus === 'ok'         ? <Wifi size={11} /> :
+             cdiStatus === 'erro'       ? <WifiOff size={11} /> :
+                                          <Wifi size={11} />}
+            {cdiStatus === 'ok'         ? `CDI ${cdiUltimo.toFixed(4)}%/dia · BCB`
+            : cdiStatus === 'erro'      ? 'CDI offline — taxa fixa'
+            : cdiStatus === 'carregando'? 'Buscando CDI…'
+            :                            'CDI'}
+          </div>
+          <button onClick={() => setMostrarForm(v => !v)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
+            {mostrarForm ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Nova caixinha</>}
+          </button>
+        </div>
       </div>
 
       {/* Resumo global */}
       {caixinhas.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Guardado</div>
@@ -575,16 +912,26 @@ export default function Caixinhas() {
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Rendimento Mensal</div>
-              <div className="text-2xl font-black text-emerald-600 mt-1">+{fmt(totalRendimento)}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">estimado (CDI 100%)</div>
+              <div className="text-2xl font-black text-emerald-600 mt-1">+{fmt(totalRendimentoMensal)}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">estimativa próximo mês · CDI {taxaRef.toFixed(4)}%/dia</div>
             </div>
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={20} /></div>
           </div>
+          <div className="bg-emerald-600 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
+            <div>
+              <div className="text-xs text-emerald-200 font-bold uppercase tracking-wider">Já Rendeu</div>
+              <div className="text-2xl font-black text-white mt-1">+{fmt(totalRendimentoReal)}</div>
+              <div className="text-[10px] text-emerald-200 mt-0.5">
+                {cdiStatus === 'ok' ? `CDI real · ${cdiMap.size} dias úteis` : 'taxa fixa de fallback'}
+              </div>
+            </div>
+            <div className="p-3 bg-white/20 text-white rounded-xl"><TrendingUp size={20} /></div>
+          </div>
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
             <div>
-              <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Rendimento Anual</div>
-              <div className="text-2xl font-black text-emerald-400 mt-1">+{fmt(totalRendimento * 12)}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">projeção 12 meses</div>
+              <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Projeção Anual</div>
+              <div className="text-2xl font-black text-emerald-400 mt-1">+{fmt(totalRendimentoMensal * 12)}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">próximos 12 meses</div>
             </div>
             <div className="p-3 bg-white/10 text-emerald-400 rounded-xl"><TrendingUp size={20} /></div>
           </div>
@@ -606,7 +953,14 @@ export default function Caixinhas() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {caixinhas.map(c => (
-            <CardCaixinha key={c.id} caixinha={c} onAtualizar={carregar} />
+            <CardCaixinha
+              key={c.id}
+              caixinha={c}
+              aportes={todosAportes.filter(a => a.caixinha_id === c.id)}
+              cdiMap={cdiMap}
+              cdiUltimo={cdiUltimo > 0 ? cdiUltimo : 0.0325}
+              onAtualizar={carregar}
+            />
           ))}
         </div>
       )}
