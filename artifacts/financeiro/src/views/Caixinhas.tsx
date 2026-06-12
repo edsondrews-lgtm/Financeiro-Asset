@@ -43,6 +43,25 @@ function diasAte(prazo: string): number {
   return Math.max(0, Math.ceil((alvo.getTime() - hoje.getTime()) / 86400000))
 }
 
+/**
+ * Calcula o rendimento ACUMULADO real de cada aporte desde a data do depósito até hoje.
+ * Usa juros compostos: valor × ((1 + taxa/100) ^ meses - 1)
+ * onde meses = dias decorridos / 30.437
+ */
+function calcularRendimentoAcumulado(aportes: Aporte[], taxaMensal: number): number {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  return aportes.reduce((total, a) => {
+    const dataDeposito = new Date(a.data_aporte + 'T12:00:00')
+    const dias = Math.max(0, (hoje.getTime() - dataDeposito.getTime()) / 86400000)
+    const meses = dias / 30.437
+    const taxa = taxaMensal / 100
+    // Juros compostos sobre o valor adicionado naquele aporte
+    const juros = Math.abs(a.valor_adicionado) * (Math.pow(1 + taxa, meses) - 1)
+    // Só contabiliza aportes positivos (entradas)
+    return total + (a.valor_adicionado > 0 ? juros : 0)
+  }, 0)
+}
+
 // ─── Modal: Aporte ────────────────────────────────────────────────────────────
 
 function ModalAporte({ caixinha, onFechar, onConfirmar }: {
@@ -292,7 +311,11 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
 
 // ─── Card da Caixinha ─────────────────────────────────────────────────────────
 
-function CardCaixinha({ caixinha, onAtualizar }: { caixinha: Caixinha; onAtualizar: () => void }) {
+function CardCaixinha({ caixinha, aportes, onAtualizar }: {
+  caixinha: Caixinha
+  aportes: Aporte[]
+  onAtualizar: () => void
+}) {
   const [modalAporte, setModalAporte] = useState(false)
   const [modalHistorico, setModalHistorico] = useState(false)
   const [modalEditar, setModalEditar] = useState(false)
@@ -302,8 +325,13 @@ function CardCaixinha({ caixinha, onAtualizar }: { caixinha: Caixinha; onAtualiz
   const progressoPct = meta > 0 ? Math.min(100, (caixinha.valor_atual / meta) * 100) : 0
   const faltam = meta > 0 ? Math.max(0, meta - caixinha.valor_atual) : null
   const rendimentoMensal = caixinha.valor_atual * (caixinha.taxa_rendimento_mensal / 100)
+  const rendimentoAcumulado = calcularRendimentoAcumulado(aportes, caixinha.taxa_rendimento_mensal)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
+
+  // Primeiro e último aporte para exibir período
+  const aportesMaisAntigos = [...aportes].filter(a => a.valor_adicionado > 0).sort((a, b) => a.data_aporte.localeCompare(b.data_aporte))
+  const primeiroDep = aportesMaisAntigos[0]?.data_aporte ?? null
 
   async function confirmarAporte(valor: number, data: string, obs: string) {
     const anterior = caixinha.valor_atual
@@ -348,11 +376,29 @@ function CardCaixinha({ caixinha, onAtualizar }: { caixinha: Caixinha; onAtualiz
             <div className="text-2xl font-black text-slate-800 mt-0.5">{fmt(caixinha.valor_atual)}</div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-slate-400 font-medium">Rendimento estimado</div>
+            <div className="text-xs text-slate-400 font-medium">Próximo mês (est.)</div>
             <div className="text-lg font-black text-emerald-600 mt-0.5">+{fmt(rendimentoMensal)}<span className="text-xs font-normal text-slate-400">/mês</span></div>
             <div className="text-[10px] text-slate-400">{caixinha.taxa_rendimento_mensal}% ao mês</div>
           </div>
         </div>
+
+        {/* Rendimento acumulado real */}
+        {rendimentoAcumulado > 0 && (
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 flex items-start justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Rendimento acumulado</div>
+              <div className="text-lg font-black text-emerald-700 mt-0.5">+{fmt(rendimentoAcumulado)}</div>
+              {primeiroDep && (
+                <div className="text-[10px] text-emerald-500 mt-0.5">
+                  desde {fmtDate(primeiroDep)} · {aportesMaisAntigos.length} aporte{aportesMaisAntigos.length !== 1 ? 's' : ''}
+                </div>
+              )}
+            </div>
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg shrink-0">
+              <TrendingUp size={16} />
+            </div>
+          </div>
+        )}
 
         {/* Barra de progresso */}
         {meta > 0 && (
@@ -526,13 +572,18 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
 
 export default function Caixinhas() {
   const [caixinhas, setCaixinhas] = useState<Caixinha[]>([])
+  const [todosAportes, setTodosAportes] = useState<Aporte[]>([])
   const [mostrarForm, setMostrarForm] = useState(false)
   const [carregando, setCarregando] = useState(true)
 
   async function carregar() {
     setCarregando(true)
-    const { data } = await supabase.from('caixinhas').select('*').order('created_at', { ascending: true })
-    setCaixinhas(data || [])
+    const [{ data: cx }, { data: ap }] = await Promise.all([
+      supabase.from('caixinhas').select('*').order('created_at', { ascending: true }),
+      supabase.from('caixinhas_aportes').select('*').order('data_aporte', { ascending: true }),
+    ])
+    setCaixinhas(cx || [])
+    setTodosAportes(ap || [])
     setCarregando(false)
   }
 
@@ -540,6 +591,10 @@ export default function Caixinhas() {
 
   const totalGuardado = caixinhas.reduce((acc, c) => acc + c.valor_atual, 0)
   const totalRendimento = caixinhas.reduce((acc, c) => acc + c.valor_atual * (c.taxa_rendimento_mensal / 100), 0)
+  const totalAcumulado = caixinhas.reduce((acc, c) => {
+    const ap = todosAportes.filter(a => a.caixinha_id === c.id)
+    return acc + calcularRendimentoAcumulado(ap, c.taxa_rendimento_mensal)
+  }, 0)
 
   return (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
@@ -563,7 +618,7 @@ export default function Caixinhas() {
 
       {/* Resumo global */}
       {caixinhas.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Guardado</div>
@@ -576,15 +631,23 @@ export default function Caixinhas() {
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Rendimento Mensal</div>
               <div className="text-2xl font-black text-emerald-600 mt-1">+{fmt(totalRendimento)}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">estimado (CDI 100%)</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">estimativa próximo mês</div>
             </div>
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={20} /></div>
           </div>
+          <div className="bg-emerald-600 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
+            <div>
+              <div className="text-xs text-emerald-200 font-bold uppercase tracking-wider">Já Rendeu</div>
+              <div className="text-2xl font-black text-white mt-1">+{fmt(totalAcumulado)}</div>
+              <div className="text-[10px] text-emerald-200 mt-0.5">desde os depósitos reais</div>
+            </div>
+            <div className="p-3 bg-white/20 text-white rounded-xl"><TrendingUp size={20} /></div>
+          </div>
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
             <div>
-              <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Rendimento Anual</div>
+              <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Projeção Anual</div>
               <div className="text-2xl font-black text-emerald-400 mt-1">+{fmt(totalRendimento * 12)}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">projeção 12 meses</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">próximos 12 meses</div>
             </div>
             <div className="p-3 bg-white/10 text-emerald-400 rounded-xl"><TrendingUp size={20} /></div>
           </div>
@@ -606,7 +669,12 @@ export default function Caixinhas() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {caixinhas.map(c => (
-            <CardCaixinha key={c.id} caixinha={c} onAtualizar={carregar} />
+            <CardCaixinha
+              key={c.id}
+              caixinha={c}
+              aportes={todosAportes.filter(a => a.caixinha_id === c.id)}
+              onAtualizar={carregar}
+            />
           ))}
         </div>
       )}
