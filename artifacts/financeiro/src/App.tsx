@@ -6,10 +6,11 @@ import DashboardImovel from './components/DashboardImovel';
 import PasswordGate from './components/PasswordGate';
 import CarteiraInvestimentos from './views/CarteiraInvestimentos';
 import Consorcios from './views/Consorcios';
+import Caixinhas from './views/Caixinhas';
 import {
   LayoutDashboard, Building2, Home, User, Wallet,
   ArrowUpRight, DollarSign, Percent, TrendingUp,
-  PieChart, FileText, ChevronDown,
+  PieChart, FileText, ChevronDown, PiggyBank,
 } from 'lucide-react';
 
 interface Nota { valor: number }
@@ -68,6 +69,7 @@ export default function App() {
   const subItensInvestimento = [
     { id: 'acoes', label: 'Ações', icon: <PieChart size={13} /> },
     { id: 'consorcios', label: 'Consórcio', icon: <FileText size={13} /> },
+    { id: 'caixinhas', label: 'Caixinhas', icon: <PiggyBank size={13} /> },
   ];
 
   function selecionarSubAba(sub: string) {
@@ -227,6 +229,7 @@ export default function App() {
           {abaAtiva === 'imoveis' && <DashboardImovel />}
           {abaAtiva === 'investimentos' && subAbaInvestimento === 'acoes' && <CarteiraInvestimentos />}
           {abaAtiva === 'investimentos' && subAbaInvestimento === 'consorcios' && <Consorcios />}
+          {abaAtiva === 'investimentos' && subAbaInvestimento === 'caixinhas' && <Caixinhas />}
         </main>
       </div>
     </PasswordGate>
