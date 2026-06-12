@@ -5,18 +5,19 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
 app.use(
-  (pinoHttp as unknown as any)({
+  pinoHttp({
     logger,
     serializers: {
-      req(req: { id?: string; method?: string; url?: string }) {
+      req(req) {
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
         };
       },
-      res(res: { statusCode?: number }) {
+      res(res) {
         return {
           statusCode: res.statusCode,
         };
