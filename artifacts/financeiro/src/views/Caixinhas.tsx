@@ -438,7 +438,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
     meta: caixinha.meta?.toString() ?? '',
     prazo: caixinha.prazo ?? '',
     descricao: caixinha.descricao ?? '',
-    taxa_rendimento_mensal: caixinha.taxa_rendimento_mensal.toString(),
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -451,7 +450,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
       meta: form.meta ? parseFloat(form.meta) : null,
       prazo: form.prazo || null,
       descricao: form.descricao || null,
-      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.0325,
     }).eq('id', caixinha.id)
     setSalvando(false)
     if (error) { setErro('Erro: ' + error.message); return }
@@ -476,7 +474,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
             { label: 'Nome *', key: 'nome', type: 'text', placeholder: 'Ex: Reserva Emergência' },
             { label: 'Meta (R$)', key: 'meta', type: 'number', placeholder: '10000' },
             { label: 'Prazo', key: 'prazo', type: 'date', placeholder: '' },
-            { label: 'Taxa diária (%)', key: 'taxa_rendimento_mensal', type: 'number', placeholder: '0.0325' },
           ].map(f => (
             <div key={f.key}>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">{f.label}</label>
@@ -491,7 +488,6 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
             <textarea value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} rows={2}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400 resize-none" />
           </div>
-          <BotaoCDI onBuscado={(taxa) => setForm(f => ({ ...f, taxa_rendimento_mensal: taxa.toString() }))} />
           <div className="flex gap-2 justify-end pt-1">
             <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
             <button type="submit" disabled={salvando}
@@ -522,17 +518,15 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
   const meta = caixinha.meta ?? 0
   const progressoPct = meta > 0 ? Math.min(100, (caixinha.valor_atual / meta) * 100) : 0
   const faltam = meta > 0 ? Math.max(0, meta - caixinha.valor_atual) : null
-  // Taxa efetiva: usa CDI atual se disponível, senão a taxa salva na caixinha
-  const taxaEfetiva = cdiUltimo > 0 ? cdiUltimo : caixinha.taxa_rendimento_mensal
-  // Estimativa mensal: VF = P × (1 + i_diaria)^30 − P
-  const iD = taxaEfetiva / 100
+  // Taxa efetiva: CDI atual da BCB, ou fallback fixo 0,0325%/dia
+  const iD = cdiUltimo / 100
   const rendimentoMensalEst = caixinha.valor_atual * (Math.pow(1 + iD, 30) - 1)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
 
-  // Juros compostos com CDI histórico real (ou fallback fixo)
+  // Juros compostos com CDI histórico real (ou fallback fixo 0,0325%/dia)
   const { linhas: linhasJuros, saldoProjetado, totalDepositado, totalRendimento: rendimentoReal } =
-    calcularJurosCompostos(aportes, taxaEfetiva, cdiMap)
+    calcularJurosCompostos(aportes, cdiUltimo, cdiMap)
 
   const aportesPositivos = linhasJuros
   const primeiroDep = aportesPositivos.length > 0
@@ -615,7 +609,7 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
           <div className="bg-slate-50 rounded-xl p-3">
             <div className="text-xs text-slate-400 font-medium">Estimativa próximo mês</div>
             <div className="text-lg font-black text-emerald-600">+{fmt(rendimentoMensalEst)}</div>
-            <div className="text-[10px] text-slate-400">i = {caixinha.taxa_rendimento_mensal}%/dia · {fmt(rendimentoMensalEst)}/mês (30d)</div>
+            <div className="text-[10px] text-slate-400">i = {cdiUltimo.toFixed(4)}%/dia · {fmt(rendimentoMensalEst)}/mês (30d)</div>
           </div>
         )}
 
@@ -722,7 +716,7 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
 
 function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar: () => void }) {
   const [form, setForm] = useState({
-    nome: '', meta: '', prazo: '', descricao: '', taxa_rendimento_mensal: '0.0325',
+    nome: '', meta: '', prazo: '', descricao: '',
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -737,7 +731,7 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
       meta: form.meta ? parseFloat(form.meta) : null,
       prazo: form.prazo || null,
       descricao: form.descricao || null,
-      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.0325,
+      taxa_rendimento_mensal: 0.0325, // mantido para compatibilidade com coluna NOT NULL; cálculos usam CDI da BCB
     })
     setSalvando(false)
     if (error) { setErro('Erro: ' + error.message); return }
@@ -766,16 +760,6 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Prazo</label>
           <input type="date" value={form.prazo} onChange={e => setForm({ ...form, prazo: e.target.value })}
             className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
-        </div>
-        <div>
-          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Taxa diária (%)</label>
-          <input type="number" value={form.taxa_rendimento_mensal} onChange={e => setForm({ ...form, taxa_rendimento_mensal: e.target.value })}
-            step="0.0001" min="0"
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
-          <p className="text-[10px] text-slate-400 mt-1">Padrão: 0,0325%/dia → VF = P × (1,000325)^n</p>
-        </div>
-        <div className="md:col-span-2">
-          <BotaoCDI onBuscado={(taxa) => setForm(f => ({ ...f, taxa_rendimento_mensal: taxa.toString() }))} />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição</label>
@@ -956,7 +940,7 @@ export default function Caixinhas() {
               caixinha={c}
               aportes={todosAportes.filter(a => a.caixinha_id === c.id)}
               cdiMap={cdiMap}
-              cdiUltimo={cdiUltimo > 0 ? cdiUltimo : c.taxa_rendimento_mensal}
+              cdiUltimo={cdiUltimo > 0 ? cdiUltimo : 0.0325}
               onAtualizar={carregar}
             />
           ))}
