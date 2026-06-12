@@ -66,6 +66,19 @@ function fmtDataBCB(d: Date): string {
   return `${dd}/${mm}/${yyyy}`
 }
 
+/**
+ * Converte taxa CDI para % diária.
+ * A BCB série 4389 retorna a taxa ANUAL (% a.a.), ex: 14.4.
+ * Fórmula: i_diária = ((1 + r_anual/100)^(1/252) - 1) × 100
+ * Se já vier como diária (valor < 1), mantém direto.
+ */
+function cdiAnualParaDiario(valorAnual: number): number {
+  if (valorAnual <= 0) return 0
+  if (valorAnual < 1) return valorAnual // já é diária (% a.d.)
+  // Converte % a.a. → % a.d. com 252 dias úteis/ano
+  return (Math.pow(1 + valorAnual / 100, 1 / 252) - 1) * 100
+}
+
 async function buscarHistoricoCDI(dataInicio: Date): Promise<CdiMap> {
   const hoje = new Date()
   const url  = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados?formato=json`
@@ -77,7 +90,8 @@ async function buscarHistoricoCDI(dataInicio: Date): Promise<CdiMap> {
   for (const d of dados) {
     // BCB retorna "DD/MM/YYYY" → converte para "YYYY-MM-DD"
     const [dd, mm, yyyy] = d.data.split('/')
-    map.set(`${yyyy}-${mm}-${dd}`, parseFloat(d.valor))
+    const valorDiario = cdiAnualParaDiario(parseFloat(d.valor))
+    map.set(`${yyyy}-${mm}-${dd}`, valorDiario)
   }
   return map
 }
