@@ -44,11 +44,12 @@ function diasAte(prazo: string): number {
 }
 
 /**
- * Converte taxa mensal (%) para taxa diária equivalente via juros compostos.
- * i_diaria = (1 + taxa_mensal/100)^(1/30.437) - 1
+ * Retorna a taxa diária como decimal.
+ * O campo taxa_rendimento_mensal armazena a taxa DIÁRIA em % (ex: 0.0325).
+ * i = taxa / 100 → ex: 0.0325 / 100 = 0.000325
  */
-function taxaDiaria(taxaMensal: number): number {
-  return Math.pow(1 + taxaMensal / 100, 1 / 30.437) - 1
+function taxaDiaria(taxaDiariaPercent: number): number {
+  return taxaDiariaPercent / 100
 }
 
 /** Dias exatos entre uma data (string YYYY-MM-DD) e hoje */
@@ -343,7 +344,7 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
       meta: form.meta ? parseFloat(form.meta) : null,
       prazo: form.prazo || null,
       descricao: form.descricao || null,
-      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.87,
+      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.0325,
     }).eq('id', caixinha.id)
     setSalvando(false)
     if (error) { setErro('Erro: ' + error.message); return }
@@ -368,7 +369,7 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
             { label: 'Nome *', key: 'nome', type: 'text', placeholder: 'Ex: Reserva Emergência' },
             { label: 'Meta (R$)', key: 'meta', type: 'number', placeholder: '10000' },
             { label: 'Prazo', key: 'prazo', type: 'date', placeholder: '' },
-            { label: 'Rendimento mensal (%)', key: 'taxa_rendimento_mensal', type: 'number', placeholder: '0.87' },
+            { label: 'Taxa diária (%)', key: 'taxa_rendimento_mensal', type: 'number', placeholder: '0.0325' },
           ].map(f => (
             <div key={f.key}>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">{f.label}</label>
@@ -384,7 +385,7 @@ function ModalEditar({ caixinha, onFechar, onSalvo }: {
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400 resize-none" />
           </div>
           <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
-            Padrão: <strong>0,87%/mês</strong> = R$ 87 líquidos a cada R$ 10.000 (100% CDI Nubank)
+            Padrão: <strong>0,0325%/dia</strong> → VF = P × (1 + 0,000325)^n — taxa fixa diária CDI Nubank
           </div>
           <div className="flex gap-2 justify-end pt-1">
             <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
@@ -414,7 +415,9 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
   const meta = caixinha.meta ?? 0
   const progressoPct = meta > 0 ? Math.min(100, (caixinha.valor_atual / meta) * 100) : 0
   const faltam = meta > 0 ? Math.max(0, meta - caixinha.valor_atual) : null
-  const rendimentoMensalEst = caixinha.valor_atual * (caixinha.taxa_rendimento_mensal / 100)
+  // Estimativa mensal: VF = P × (1 + i_diaria)^30 − P
+  const iD = taxaDiaria(caixinha.taxa_rendimento_mensal)
+  const rendimentoMensalEst = caixinha.valor_atual * (Math.pow(1 + iD, 30) - 1)
   const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
   const porDia = faltam && dias && dias > 0 ? faltam / dias : null
 
@@ -503,7 +506,7 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
           <div className="bg-slate-50 rounded-xl p-3">
             <div className="text-xs text-slate-400 font-medium">Estimativa próximo mês</div>
             <div className="text-lg font-black text-emerald-600">+{fmt(rendimentoMensalEst)}</div>
-            <div className="text-[10px] text-slate-400">{caixinha.taxa_rendimento_mensal}% ao mês · i = {(iDiaria * 100).toFixed(4)}%/dia</div>
+            <div className="text-[10px] text-slate-400">i = {caixinha.taxa_rendimento_mensal}%/dia · {fmt(rendimentoMensalEst)}/mês (30d)</div>
           </div>
         )}
 
@@ -604,7 +607,7 @@ function CardCaixinha({ caixinha, aportes, onAtualizar }: {
 
 function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar: () => void }) {
   const [form, setForm] = useState({
-    nome: '', meta: '', prazo: '', descricao: '', taxa_rendimento_mensal: '0.87',
+    nome: '', meta: '', prazo: '', descricao: '', taxa_rendimento_mensal: '0.0325',
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -619,7 +622,7 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
       meta: form.meta ? parseFloat(form.meta) : null,
       prazo: form.prazo || null,
       descricao: form.descricao || null,
-      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.87,
+      taxa_rendimento_mensal: parseFloat(form.taxa_rendimento_mensal) || 0.0325,
     })
     setSalvando(false)
     if (error) { setErro('Erro: ' + error.message); return }
@@ -650,11 +653,11 @@ function FormNovaCaixinha({ onSalvo, onFechar }: { onSalvo: () => void; onFechar
             className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
         </div>
         <div>
-          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Rendimento mensal (%)</label>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Taxa diária (%)</label>
           <input type="number" value={form.taxa_rendimento_mensal} onChange={e => setForm({ ...form, taxa_rendimento_mensal: e.target.value })}
-            step="0.01" min="0"
+            step="0.0001" min="0"
             className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
-          <p className="text-[10px] text-slate-400 mt-1">Padrão: 0,87% = R$87/mês por R$10.000 (100% CDI Nubank)</p>
+          <p className="text-[10px] text-slate-400 mt-1">Padrão: 0,0325%/dia → VF = P × (1,000325)^n</p>
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição</label>
@@ -697,7 +700,10 @@ export default function Caixinhas() {
   useEffect(() => { carregar() }, [])
 
   const totalGuardado = caixinhas.reduce((acc, c) => acc + c.valor_atual, 0)
-  const totalRendimento = caixinhas.reduce((acc, c) => acc + c.valor_atual * (c.taxa_rendimento_mensal / 100), 0)
+  const totalRendimento = caixinhas.reduce((acc, c) => {
+    const iD = taxaDiaria(c.taxa_rendimento_mensal)
+    return acc + c.valor_atual * (Math.pow(1 + iD, 30) - 1)
+  }, 0)
   // Juros compostos diários somados de todas as caixinhas
   const { totalDepositado: totalDepositadoGlobal, totalRendimento: totalRendimentoReal, saldoProjetado: totalProjetado } =
     caixinhas.reduce((acc, c) => {
