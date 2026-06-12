@@ -589,8 +589,8 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
 
         {/* Saldo corrigido — destaque principal */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-4 space-y-1">
-          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo atual (c/ rendimento)</div>
-          <div className="text-3xl font-black text-white">{fmt(caixinha.valor_atual)}</div>
+          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo c/ rendimento</div>
+          <div className="text-3xl font-black text-white">{fmt(saldoProjetado > 0 ? saldoProjetado : caixinha.valor_atual)}</div>
           {totalDepositado > 0 && (
             <div className="text-xs text-slate-400">
               Depositado: <span className="text-slate-300 font-semibold">{fmt(totalDepositado)}</span>
