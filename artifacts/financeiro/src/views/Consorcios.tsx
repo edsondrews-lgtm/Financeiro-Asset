@@ -28,6 +28,9 @@ interface Parcela {
   valor_taxa_adm: number
   valor_fundo_reserva: number
   valor_total: number
+  base_fundo_comum: number
+  base_taxa_adm: number
+  base_fundo_reserva: number
   base_total: number
   status: 'pago' | 'pendente' | 'cancelada'
   data_vencimento: string | null
@@ -41,39 +44,30 @@ interface Parcela {
 const fmt = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const fmtPct = (v: number) => `${v.toFixed(2)}%`
+const round2 = (v: number) => Math.round(v * 100) / 100
+
+function addMonths(dateStr: string, months: number): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString().split('T')[0]
+}
 
 function StatusBadge({ status }: { status: Parcela['status'] }) {
-  if (status === 'pago') return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
-      <CheckCircle2 size={10} /> Pago
-    </span>
-  )
-  if (status === 'cancelada') return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 text-[10px] font-bold">
-      <Ban size={10} /> Cancelada
-    </span>
-  )
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold">
-      <Clock size={10} /> Pendente
-    </span>
-  )
+  if (status === 'pago')
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold"><CheckCircle2 size={10} /> Pago</span>
+  if (status === 'cancelada')
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 text-[10px] font-bold"><Ban size={10} /> Cancelada</span>
+  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold"><Clock size={10} /> Pendente</span>
 }
 
 // ─── Formulário: Novo Consórcio ───────────────────────────────────────────────
 
-const formNovoVazio = {
-  descricao: '',
-  valor_bem: '105000',
-  prazo: '75',
-  taxa_adm_total: '6.4',
-  fundo_reserva_total: '2',
-  data_inicio: new Date().toISOString().split('T')[0],
-}
-
 function NovoConsorcioForm({ onSalvo }: { onSalvo: () => void }) {
-  const [form, setForm] = useState(formNovoVazio)
+  const [form, setForm] = useState({
+    descricao: '', valor_bem: '105000', prazo: '75',
+    taxa_adm_total: '6.4', fundo_reserva_total: '2',
+    data_inicio: new Date().toISOString().split('T')[0],
+  })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -81,34 +75,45 @@ function NovoConsorcioForm({ onSalvo }: { onSalvo: () => void }) {
   const pr = parseInt(form.prazo) || 1
   const ta = parseFloat(form.taxa_adm_total) || 0
   const fr = parseFloat(form.fundo_reserva_total) || 0
-  const fc = +(vb / pr).toFixed(2)
-  const adm = +(vb * ta / 100 / pr).toFixed(2)
-  const res = +(vb * fr / 100 / pr).toFixed(2)
-  const total = +(fc + adm + res).toFixed(2)
+  const fc = round2(vb / pr)
+  const adm = round2(vb * ta / 100 / pr)
+  const res = round2(vb * fr / 100 / pr)
+  const total = round2(fc + adm + res)
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
-    setErro(null)
-    setSalvando(true)
-    const { error } = await supabase.from('consorcios').insert({
-      descricao: form.descricao,
-      valor_bem: vb,
-      prazo: pr,
-      taxa_adm_total: ta,
-      fundo_reserva_total: fr,
-      valor_parcela_base: total,
-      fator_correcao: 1.0,
-      data_inicio: form.data_inicio,
-    })
+    if (!form.descricao || vb <= 0 || pr <= 0) { setErro('Preencha todos os campos.'); return }
+    setSalvando(true); setErro(null)
+
+    // 1. Insere o consórcio
+    const { data: novo, error: errC } = await supabase
+      .from('consorcios')
+      .insert({ descricao: form.descricao, valor_bem: vb, prazo: pr, taxa_adm_total: ta,
+        fundo_reserva_total: fr, valor_parcela_base: total, fator_correcao: 1.0, data_inicio: form.data_inicio })
+      .select().single()
+
+    if (errC || !novo) { setErro('Erro ao criar consórcio: ' + errC?.message); setSalvando(false); return }
+
+    // 2. Gera as N parcelas no app e insere em lote
+    const parcelas = Array.from({ length: pr }, (_, i) => ({
+      consorcio_id: novo.id,
+      numero_parcela: i + 1,
+      valor_fundo_comum: fc, valor_taxa_adm: adm, valor_fundo_reserva: res, valor_total: total,
+      base_fundo_comum: fc, base_taxa_adm: adm, base_fundo_reserva: res, base_total: total,
+      status: 'pendente',
+      data_vencimento: addMonths(form.data_inicio, i + 1),
+    }))
+
+    const { error: errP } = await supabase.from('parcelas_calculadas').insert(parcelas)
+    if (errP) { setErro('Erro ao gerar parcelas: ' + errP.message); setSalvando(false); return }
+
     setSalvando(false)
-    if (error) { setErro('Erro: ' + error.message); return }
     onSalvo()
   }
 
   return (
     <form onSubmit={salvar} className="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 space-y-4">
       <h3 className="text-sm font-bold text-slate-700">Novo Consórcio</h3>
-
       {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -116,25 +121,24 @@ function NovoConsorcioForm({ onSalvo }: { onSalvo: () => void }) {
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição *</label>
           <input type="text" placeholder="Ex: Consórcio Imóvel 105k" value={form.descricao}
             onChange={e => setForm({ ...form, descricao: e.target.value })} required
-            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-violet-400" />
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400" />
         </div>
         {[
-          { label: 'Valor do Bem (R$) *', key: 'valor_bem', placeholder: '105000' },
-          { label: 'Prazo (meses) *', key: 'prazo', placeholder: '75' },
-          { label: 'Taxa Adm. Total (%) *', key: 'taxa_adm_total', placeholder: '6.4' },
-          { label: 'Fundo de Reserva (%) *', key: 'fundo_reserva_total', placeholder: '2' },
-          { label: 'Data de Início', key: 'data_inicio', placeholder: '', type: 'date' },
+          { label: 'Valor do Bem (R$)', key: 'valor_bem' },
+          { label: 'Prazo (meses)', key: 'prazo' },
+          { label: 'Taxa Adm. Total (%)', key: 'taxa_adm_total' },
+          { label: 'Fundo de Reserva (%)', key: 'fundo_reserva_total' },
+          { label: 'Data de Início', key: 'data_inicio', type: 'date' },
         ].map(f => (
           <div key={f.key}>
             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">{f.label}</label>
-            <input type={f.type || 'number'} placeholder={f.placeholder} value={(form as any)[f.key]}
-              onChange={e => setForm({ ...form, [f.key]: e.target.value })} min="0" step="any"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-violet-400" />
+            <input type={f.type || 'number'} value={(form as any)[f.key]} min="0" step="any"
+              onChange={e => setForm({ ...form, [f.key]: e.target.value })}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400" />
           </div>
         ))}
       </div>
 
-      {/* Preview da parcela */}
       <div className="p-4 bg-violet-50 rounded-xl border border-violet-100 text-xs text-violet-800 grid grid-cols-4 gap-3">
         <div><div className="text-violet-400 font-bold uppercase mb-0.5">Fundo Comum</div><div className="font-black">{fmt(fc)}</div></div>
         <div><div className="text-violet-400 font-bold uppercase mb-0.5">Taxa Adm.</div><div className="font-black">{fmt(adm)}</div></div>
@@ -145,7 +149,7 @@ function NovoConsorcioForm({ onSalvo }: { onSalvo: () => void }) {
       <div className="flex justify-end">
         <button type="submit" disabled={salvando}
           className="px-6 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50">
-          {salvando ? 'Gerando parcelas...' : `Criar e gerar ${pr} parcelas`}
+          {salvando ? `Gerando ${pr} parcelas...` : `Criar e gerar ${pr} parcelas`}
         </button>
       </div>
     </form>
@@ -160,7 +164,6 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   const [erro, setErro] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState<string | null>(null)
 
-  // Modais
   const [modalIPCA, setModalIPCA] = useState(false)
   const [modalLance, setModalLance] = useState(false)
   const [fatorIPCA, setFatorIPCA] = useState('1.05')
@@ -168,11 +171,8 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   const [tipoAmort, setTipoAmort] = useState<'reduzir_parcela' | 'reduzir_prazo'>('reduzir_parcela')
   const [aplicando, setAplicando] = useState(false)
 
-  // Edição inline
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [editValor, setEditValor] = useState('')
-
-  // Filtros e ordenação
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pago' | 'pendente' | 'cancelada'>('todos')
   const [paginaAtual, setPaginaAtual] = useState(1)
   const porPagina = 20
@@ -180,57 +180,48 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   const carregar = useCallback(async () => {
     setCarregando(true)
     const { data, error } = await supabase
-      .from('parcelas_calculadas')
-      .select('*')
+      .from('parcelas_calculadas').select('*')
       .eq('consorcio_id', consorcio.id)
       .order('numero_parcela', { ascending: true })
-    if (error) { setErro('Erro ao carregar parcelas: ' + error.message); setCarregando(false); return }
+    if (error) { setErro('Erro: ' + error.message); setCarregando(false); return }
     setParcelas(data || [])
     setCarregando(false)
   }, [consorcio.id])
 
   useEffect(() => { carregar() }, [carregar])
 
-  // ── Cálculos ─────────────────────────────────────────────────────────────
-
   const pagas = parcelas.filter(p => p.status === 'pago')
   const pendentes = parcelas.filter(p => p.status === 'pendente')
   const canceladas = parcelas.filter(p => p.status === 'cancelada')
   const ativas = parcelas.filter(p => p.status !== 'cancelada')
-
-  const totalParcelas = ativas.length
-  const parcelasPagas = pagas.length
-  const progressoPct = totalParcelas > 0 ? (parcelasPagas / totalParcelas) * 100 : 0
-
+  const progressoPct = ativas.length > 0 ? (pagas.length / ativas.length) * 100 : 0
   const fundoComumPago = pagas.reduce((acc, p) => acc + p.valor_fundo_comum, 0)
   const saldoDevedor = Math.max(0, consorcio.valor_bem - fundoComumPago)
+  const totalPago = pagas.reduce((acc, p) => acc + (p.valor_pago ?? p.valor_total), 0)
+  const totalPendente = pendentes.reduce((acc, p) => acc + p.valor_total, 0)
+  const custoEfetivo = totalPago + totalPendente
 
-  const totalPagoEfetivo = pagas.reduce((acc, p) => acc + (p.valor_pago ?? p.valor_total), 0)
-  const totalPrevistoPendentes = pendentes.reduce((acc, p) => acc + p.valor_total, 0)
-  const custoTotalEfetivo = totalPagoEfetivo + totalPrevistoPendentes
+  function mostrarSucesso(msg: string) { setSucesso(msg); setTimeout(() => setSucesso(null), 4000) }
 
-  // ── Ações ─────────────────────────────────────────────────────────────────
-
-  async function toggleStatus(parcela: Parcela) {
-    if (parcela.status === 'cancelada') return
-    const novoStatus = parcela.status === 'pago' ? 'pendente' : 'pago'
+  async function toggleStatus(p: Parcela) {
+    if (p.status === 'cancelada') return
+    const novoStatus = p.status === 'pago' ? 'pendente' : 'pago'
     const { error } = await supabase.from('parcelas_calculadas').update({
       status: novoStatus,
       data_pagamento: novoStatus === 'pago' ? new Date().toISOString().split('T')[0] : null,
-      valor_pago: novoStatus === 'pago' ? parcela.valor_total : null,
-    }).eq('id', parcela.id)
+      valor_pago: novoStatus === 'pago' ? p.valor_total : null,
+    }).eq('id', p.id)
     if (error) { setErro('Erro: ' + error.message); return }
-    setParcelas(prev => prev.map(p => p.id === parcela.id
-      ? { ...p, status: novoStatus, data_pagamento: novoStatus === 'pago' ? new Date().toISOString().split('T')[0] : null, valor_pago: novoStatus === 'pago' ? p.valor_total : null }
-      : p
-    ))
+    setParcelas(prev => prev.map(x => x.id === p.id
+      ? { ...x, status: novoStatus, valor_pago: novoStatus === 'pago' ? x.valor_total : null }
+      : x))
   }
 
   async function salvarEdicao(id: string) {
     const novo = parseFloat(editValor)
     if (isNaN(novo) || novo < 0) { setEditandoId(null); return }
     const { error } = await supabase.from('parcelas_calculadas').update({ valor_total: novo }).eq('id', id)
-    if (error) { setErro('Erro ao editar: ' + error.message); setEditandoId(null); return }
+    if (error) { setErro('Erro: ' + error.message); setEditandoId(null); return }
     setParcelas(prev => prev.map(p => p.id === id ? { ...p, valor_total: novo } : p))
     setEditandoId(null)
     mostrarSucesso('Valor atualizado!')
@@ -240,40 +231,75 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
     const fator = parseFloat(fatorIPCA)
     if (isNaN(fator) || fator <= 0) { setErro('Fator inválido'); return }
     setAplicando(true)
-    const { error } = await supabase.rpc('aplicar_correcao_ipca', {
-      p_consorcio_id: consorcio.id,
-      p_fator: fator,
-    })
-    setAplicando(false)
-    setModalIPCA(false)
-    if (error) { setErro('Erro ao aplicar IPCA: ' + error.message); return }
-    mostrarSucesso(`Correção de ${((fator - 1) * 100).toFixed(2)}% aplicada às parcelas pendentes!`)
+
+    // Calcula os novos valores no app e atualiza em lote
+    const atualizacoes = pendentes.map(p => ({
+      id: p.id,
+      valor_fundo_comum:   round2(p.base_fundo_comum   * fator),
+      valor_taxa_adm:      round2(p.base_taxa_adm       * fator),
+      valor_fundo_reserva: round2(p.base_fundo_reserva  * fator),
+      valor_total:         round2(p.base_total          * fator),
+    }))
+
+    for (const upd of atualizacoes) {
+      await supabase.from('parcelas_calculadas').update({
+        valor_fundo_comum:   upd.valor_fundo_comum,
+        valor_taxa_adm:      upd.valor_taxa_adm,
+        valor_fundo_reserva: upd.valor_fundo_reserva,
+        valor_total:         upd.valor_total,
+      }).eq('id', upd.id)
+    }
+
+    await supabase.from('consorcios').update({ fator_correcao: fator }).eq('id', consorcio.id)
+
+    setAplicando(false); setModalIPCA(false)
+    mostrarSucesso(`IPCA de ${((fator - 1) * 100).toFixed(2)}% aplicado às parcelas pendentes!`)
     await carregar()
   }
 
   async function processarLance() {
     const lance = parseFloat(valorLance)
-    if (isNaN(lance) || lance <= 0) { setErro('Valor de lance inválido'); return }
+    if (isNaN(lance) || lance <= 0) { setErro('Valor inválido'); return }
     setAplicando(true)
-    const { error } = await supabase.rpc('processar_lance', {
-      p_consorcio_id: consorcio.id,
-      p_valor_lance: lance,
-      p_tipo_amortizacao: tipoAmort,
-      p_data_lance: new Date().toISOString().split('T')[0],
+
+    if (tipoAmort === 'reduzir_parcela') {
+      const reducao = round2(lance / pendentes.length)
+      for (const p of pendentes) {
+        const novoTotal = round2(Math.max(0, p.valor_total - reducao))
+        const ratio = p.base_total > 0 ? reducao / p.base_total : 0
+        await supabase.from('parcelas_calculadas').update({
+          valor_fundo_comum:   round2(Math.max(0, p.valor_fundo_comum   - p.base_fundo_comum   * ratio)),
+          valor_taxa_adm:      round2(Math.max(0, p.valor_taxa_adm      - p.base_taxa_adm      * ratio)),
+          valor_fundo_reserva: round2(Math.max(0, p.valor_fundo_reserva - p.base_fundo_reserva * ratio)),
+          valor_total: novoTotal,
+          observacao: ((p.observacao ?? '') + ` | Lance -${fmt(reducao)}`).trim(),
+        }).eq('id', p.id)
+      }
+    } else {
+      // Reduzir prazo: cancela as últimas N parcelas
+      const valorRef = pendentes[0]?.valor_total ?? 0
+      if (valorRef > 0) {
+        const nCancelar = Math.floor(lance / valorRef)
+        const aCancelar = [...pendentes].reverse().slice(0, nCancelar)
+        for (const p of aCancelar) {
+          await supabase.from('parcelas_calculadas').update({
+            status: 'cancelada',
+            observacao: `Quitada por lance ${fmt(lance)}`,
+          }).eq('id', p.id)
+        }
+      }
+    }
+
+    // Registra o lance
+    await supabase.from('lances_consorcio').insert({
+      consorcio_id: consorcio.id, valor_lance: lance,
+      tipo_amortizacao: tipoAmort, parcela_inicio: pendentes[0]?.numero_parcela ?? 0,
     })
-    setAplicando(false)
-    setModalLance(false)
-    if (error) { setErro('Erro ao processar lance: ' + error.message); return }
-    mostrarSucesso(`Lance de ${fmt(lance)} processado (${tipoAmort === 'reduzir_parcela' ? 'redução de parcela' : 'redução de prazo'})!`)
+
+    setAplicando(false); setModalLance(false); setValorLance('')
+    mostrarSucesso(`Lance de ${fmt(lance)} processado!`)
     await carregar()
   }
-
-  function mostrarSucesso(msg: string) {
-    setSucesso(msg)
-    setTimeout(() => setSucesso(null), 4000)
-  }
-
-  // ── Tabela filtrada ───────────────────────────────────────────────────────
 
   const parcelasFiltradas = filtroStatus === 'todos' ? parcelas : parcelas.filter(p => p.status === filtroStatus)
   const totalPaginas = Math.ceil(parcelasFiltradas.length / porPagina)
@@ -282,49 +308,45 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto text-slate-700">
 
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-violet-600 rounded-xl text-white shadow-md shadow-violet-100">
-            <FileText size={24} />
-          </div>
+          <div className="p-2.5 bg-violet-600 rounded-xl text-white shadow-md shadow-violet-100"><FileText size={24} /></div>
           <div>
             <button onClick={onVoltar} className="text-xs text-violet-500 hover:text-violet-700 font-bold mb-0.5 block">← Todos os consórcios</button>
-            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">{consorcio.descricao}</h2>
-            <p className="text-slate-400 text-xs">{fmt(consorcio.valor_bem)} · {consorcio.prazo} meses · Fator atual: {consorcio.fator_correcao.toFixed(4)}</p>
+            <h2 className="text-2xl font-bold text-slate-800">{consorcio.descricao}</h2>
+            <p className="text-slate-400 text-xs">{fmt(consorcio.valor_bem)} · {consorcio.prazo} meses · Fator: {consorcio.fator_correcao.toFixed(4)}</p>
           </div>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setModalIPCA(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold">
             <Percent size={13} /> Aplicar IPCA
           </button>
           <button onClick={() => setModalLance(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold">
             <Zap size={13} /> Processar Lance
           </button>
-          <button onClick={carregar} title="Recarregar"
-            className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-xl transition-all">
+          <button onClick={carregar} className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-xl">
             <RefreshCw size={14} className={carregando ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
-      {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium">{erro}</div>}
-      {sucesso && <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-medium">✓ {sucesso}</div>}
+      {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+      {sucesso && <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs">✓ {sucesso}</div>}
 
-      {/* Cards de resumo */}
+      {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Progresso</span>
             <div className="p-2 bg-violet-50 text-violet-600 rounded-lg"><BarChart3 size={15} /></div>
           </div>
-          <div className="text-2xl font-black text-slate-800">{parcelasPagas}/{totalParcelas}</div>
+          <div className="text-2xl font-black text-slate-800">{pagas.length}/{ativas.length}</div>
           <div className="w-full bg-slate-100 rounded-full h-2">
             <div className="h-2 rounded-full bg-violet-500 transition-all" style={{ width: `${progressoPct}%` }} />
           </div>
-          <div className="text-[10px] text-slate-400 font-medium">{progressoPct.toFixed(1)}% concluído</div>
+          <div className="text-[10px] text-slate-400">{progressoPct.toFixed(1)}% concluído</div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
@@ -333,7 +355,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
             <div className="p-2 bg-rose-50 text-rose-500 rounded-lg"><TrendingUp size={15} /></div>
           </div>
           <div className="text-2xl font-black text-slate-800">{fmt(saldoDevedor)}</div>
-          <div className="text-[10px] text-slate-400">Bem: {fmt(consorcio.valor_bem)} − FC pago: {fmt(fundoComumPago)}</div>
+          <div className="text-[10px] text-slate-400">FC pago: {fmt(fundoComumPago)}</div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
@@ -341,8 +363,8 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
             <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Custo Total Efetivo</span>
             <div className="p-2 bg-amber-50 text-amber-500 rounded-lg"><DollarSign size={15} /></div>
           </div>
-          <div className="text-2xl font-black text-slate-800">{fmt(custoTotalEfetivo)}</div>
-          <div className="text-[10px] text-slate-400">Pago + pendente (sem canceladas)</div>
+          <div className="text-2xl font-black text-slate-800">{fmt(custoEfetivo)}</div>
+          <div className="text-[10px] text-slate-400">Pago + pendente</div>
         </div>
 
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-5 rounded-2xl text-white shadow-sm space-y-1">
@@ -363,24 +385,21 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
               <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Percent size={18} /></div>
               <h3 className="text-sm font-bold text-slate-800">Aplicar Correção IPCA</h3>
             </div>
-            <p className="text-xs text-slate-500">Informe o fator de correção acumulado. Ex: <strong>1.05</strong> para +5%, <strong>1.0312</strong> para +3,12%.</p>
+            <p className="text-xs text-slate-500">Ex: <strong>1.05</strong> = +5% · <strong>1.0312</strong> = +3,12%</p>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Fator de Correção</label>
-              <input type="number" value={fatorIPCA} onChange={e => setFatorIPCA(e.target.value)}
-                step="0.0001" min="0.5" max="3"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-amber-400" />
+              <input type="number" value={fatorIPCA} onChange={e => setFatorIPCA(e.target.value)} step="0.0001" min="0.5" max="3"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" />
               {parseFloat(fatorIPCA) > 0 && (
-                <p className="text-xs text-amber-600 font-medium mt-1">
-                  Variação: {((parseFloat(fatorIPCA) - 1) * 100).toFixed(2)}%
-                </p>
+                <p className="text-xs text-amber-600 mt-1">Variação: +{((parseFloat(fatorIPCA) - 1) * 100).toFixed(2)}%</p>
               )}
             </div>
             <div className="p-3 bg-amber-50 rounded-xl text-xs text-amber-700 flex gap-2">
               <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-              Serão atualizadas apenas as parcelas com status <strong>pendente</strong>.
+              Apenas parcelas <strong>pendentes</strong> serão atualizadas.
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setModalIPCA(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+              <button onClick={() => setModalIPCA(false)} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
               <button onClick={aplicarIPCA} disabled={aplicando}
                 className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold disabled:opacity-50">
                 {aplicando ? 'Aplicando...' : 'Confirmar'}
@@ -400,26 +419,25 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor do Lance (R$)</label>
-              <input type="number" value={valorLance} onChange={e => setValorLance(e.target.value)}
-                placeholder="Ex: 20000" min="0" step="0.01"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-violet-400" />
+              <input type="number" value={valorLance} onChange={e => setValorLance(e.target.value)} placeholder="Ex: 20000" min="0" step="0.01"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400" />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Tipo de Amortização</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tipo de Amortização</label>
               <div className="grid grid-cols-2 gap-2">
                 {(['reduzir_parcela', 'reduzir_prazo'] as const).map(t => (
                   <button key={t} onClick={() => setTipoAmort(t)}
-                    className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${tipoAmort === t ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                    <div className="font-black mb-0.5">{t === 'reduzir_parcela' ? 'Reduzir Parcela' : 'Reduzir Prazo'}</div>
-                    <div className="text-[10px] font-medium opacity-70">
-                      {t === 'reduzir_parcela' ? 'Valor de cada parcela cai proporcionalmente' : 'Remove parcelas do final mantendo o valor'}
+                    className={`p-3 rounded-xl border text-xs text-left transition-all ${tipoAmort === t ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-500'}`}>
+                    <div className="font-black">{t === 'reduzir_parcela' ? 'Reduzir Parcela' : 'Reduzir Prazo'}</div>
+                    <div className="text-[10px] mt-0.5 opacity-70">
+                      {t === 'reduzir_parcela' ? 'Valor de cada parcela cai' : 'Remove parcelas do final'}
                     </div>
                   </button>
                 ))}
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setModalLance(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+              <button onClick={() => setModalLance(false)} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
               <button onClick={processarLance} disabled={aplicando}
                 className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold disabled:opacity-50">
                 {aplicando ? 'Processando...' : 'Confirmar Lance'}
@@ -429,11 +447,10 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
         </div>
       )}
 
-      {/* Tabela de parcelas */}
+      {/* Tabela */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
-        {/* Filtros e paginação */}
         <div className="p-4 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 flex-wrap">
             {(['todos', 'pendente', 'pago', 'cancelada'] as const).map(f => (
               <button key={f} onClick={() => { setFiltroStatus(f); setPaginaAtual(1) }}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${filtroStatus === f ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
@@ -447,10 +464,10 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <button onClick={() => setPaginaAtual(p => Math.max(1, p - 1))} disabled={paginaAtual === 1}
-              className="p-1 hover:text-slate-600 disabled:opacity-30"><ChevronUp size={14} /></button>
+              className="p-1 disabled:opacity-30"><ChevronUp size={14} /></button>
             <span>Pág. {paginaAtual}/{totalPaginas || 1}</span>
-            <button onClick={() => setPaginaAtual(p => Math.min(totalPaginas, p + 1))} disabled={paginaAtual === totalPaginas || totalPaginas === 0}
-              className="p-1 hover:text-slate-600 disabled:opacity-30"><ChevronDown size={14} /></button>
+            <button onClick={() => setPaginaAtual(p => Math.min(totalPaginas, p + 1))} disabled={paginaAtual >= totalPaginas}
+              className="p-1 disabled:opacity-30"><ChevronDown size={14} /></button>
           </div>
         </div>
 
@@ -484,36 +501,30 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
                           <input type="number" value={editValor} onChange={e => setEditValor(e.target.value)} step="0.01"
                             className="w-24 border border-violet-300 rounded-lg px-2 py-1 text-xs focus:outline-none" autoFocus
                             onKeyDown={e => { if (e.key === 'Enter') salvarEdicao(p.id); if (e.key === 'Escape') setEditandoId(null) }} />
-                          <button onClick={() => salvarEdicao(p.id)} className="p-1 text-emerald-500 hover:text-emerald-700"><Check size={12} /></button>
-                          <button onClick={() => setEditandoId(null)} className="p-1 text-slate-400 hover:text-slate-600"><X size={12} /></button>
+                          <button onClick={() => salvarEdicao(p.id)} className="p-1 text-emerald-500"><Check size={12} /></button>
+                          <button onClick={() => setEditandoId(null)} className="p-1 text-slate-400"><X size={12} /></button>
                         </div>
-                      ) : (
-                        <span>{fmt(p.valor_total)}</span>
-                      )}
+                      ) : fmt(p.valor_total)}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-400">
-                      {p.data_vencimento ? new Date(p.data_vencimento).toLocaleDateString('pt-BR') : '—'}
+                      {p.data_vencimento ? new Date(p.data_vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
                     </td>
+                    <td className="px-4 py-3 text-center"><StatusBadge status={p.status} /></td>
                     <td className="px-4 py-3 text-center">
-                      <StatusBadge status={p.status} />
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {p.status !== 'cancelada' && (
-                          <>
-                            <button onClick={() => toggleStatus(p)} title={p.status === 'pago' ? 'Marcar como pendente' : 'Marcar como pago'}
-                              className={`p-1.5 rounded-lg transition-colors text-xs ${p.status === 'pago' ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
-                              <CheckCircle2 size={12} />
+                      {p.status !== 'cancelada' && (
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => toggleStatus(p)} title={p.status === 'pago' ? 'Desmarcar' : 'Marcar como pago'}
+                            className={`p-1.5 rounded-lg transition-colors ${p.status === 'pago' ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+                            <CheckCircle2 size={12} />
+                          </button>
+                          {p.status === 'pendente' && (
+                            <button onClick={() => { setEditandoId(p.id); setEditValor(p.valor_total.toString()) }}
+                              className="p-1.5 rounded-lg bg-violet-50 text-violet-500 hover:bg-violet-100 transition-colors">
+                              <Edit2 size={12} />
                             </button>
-                            {p.status === 'pendente' && (
-                              <button onClick={() => { setEditandoId(p.id); setEditValor(p.valor_total.toString()) }}
-                                title="Editar valor" className="p-1.5 rounded-lg bg-violet-50 text-violet-500 hover:bg-violet-100 transition-colors">
-                                <Edit2 size={12} />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -543,38 +554,33 @@ export default function Consorcios() {
 
   useEffect(() => { carregar() }, [])
 
-  if (selecionado) {
+  if (selecionado)
     return <DashboardConsorcio consorcio={selecionado} onVoltar={() => { setSelecionado(null); carregar() }} />
-  }
 
   return (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-violet-600 rounded-xl text-white shadow-md shadow-violet-100">
-            <FileText size={24} />
-          </div>
+          <div className="p-2.5 bg-violet-600 rounded-xl text-white shadow-md shadow-violet-100"><FileText size={24} /></div>
           <div>
-            <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Consórcios</h2>
-            <p className="text-slate-500 text-sm font-medium">Gestão completa com IPCA e lances</p>
+            <h2 className="text-3xl font-bold text-slate-800">Consórcios</h2>
+            <p className="text-slate-500 text-sm">Gestão completa com IPCA e lances</p>
           </div>
         </div>
         <button onClick={() => setMostrarForm(v => !v)}
-          className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
+          className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold">
           {mostrarForm ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Novo consórcio</>}
         </button>
       </div>
 
-      {mostrarForm && (
-        <NovoConsorcioForm onSalvo={() => { setMostrarForm(false); carregar() }} />
-      )}
+      {mostrarForm && <NovoConsorcioForm onSalvo={() => { setMostrarForm(false); carregar() }} />}
 
       {carregando ? (
         <div className="text-center py-16 text-slate-400 text-sm">Carregando...</div>
       ) : consorcios.length === 0 ? (
-        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm text-center py-16 text-slate-400">
+        <div className="bg-white border border-slate-100 rounded-2xl text-center py-16 text-slate-400">
           <p className="text-4xl mb-3">📋</p>
-          <p className="text-sm font-medium">Nenhum consórcio cadastrado.</p>
+          <p className="text-sm font-medium">Nenhum consórcio ainda.</p>
           <p className="text-xs mt-1 text-slate-300">Clique em "Novo consórcio" para começar.</p>
         </div>
       ) : (
@@ -583,14 +589,14 @@ export default function Consorcios() {
             <button key={c.id} onClick={() => setSelecionado(c)}
               className="bg-white border border-slate-100 rounded-2xl shadow-sm p-5 text-left hover:shadow-md hover:border-violet-200 transition-all group space-y-3">
               <div className="flex items-start justify-between">
-                <span className="text-sm font-bold text-slate-800 group-hover:text-violet-700 transition-colors">{c.descricao}</span>
+                <span className="text-sm font-bold text-slate-800 group-hover:text-violet-700">{c.descricao}</span>
                 <span className="text-[10px] text-violet-600 font-bold bg-violet-50 px-2 py-0.5 rounded-full">{c.prazo}x</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div><div className="text-slate-400 font-medium">Valor do Bem</div><div className="font-bold text-slate-700">{fmt(c.valor_bem)}</div></div>
-                <div><div className="text-slate-400 font-medium">Parcela Base</div><div className="font-bold text-slate-700">{fmt(c.valor_parcela_base)}</div></div>
-                <div><div className="text-slate-400 font-medium">Taxa Adm.</div><div className="font-bold text-slate-700">{fmtPct(c.taxa_adm_total)}</div></div>
-                <div><div className="text-slate-400 font-medium">Fator Correção</div><div className="font-bold text-slate-700">{c.fator_correcao.toFixed(4)}</div></div>
+                <div><div className="text-slate-400">Valor do Bem</div><div className="font-bold text-slate-700">{fmt(c.valor_bem)}</div></div>
+                <div><div className="text-slate-400">Parcela Base</div><div className="font-bold text-slate-700">{fmt(c.valor_parcela_base)}</div></div>
+                <div><div className="text-slate-400">Taxa Adm.</div><div className="font-bold text-slate-700">{c.taxa_adm_total}%</div></div>
+                <div><div className="text-slate-400">Fator Correção</div><div className="font-bold text-slate-700">{c.fator_correcao.toFixed(4)}</div></div>
               </div>
               <div className="text-[10px] text-violet-500 font-bold group-hover:text-violet-700">Ver detalhes →</div>
             </button>
