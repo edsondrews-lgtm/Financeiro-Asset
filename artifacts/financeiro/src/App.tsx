@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabaseClient";
 import ControleEmpresa from "./views/ControleEmpresa";
 import SaidasPainel from "./views/SaidasPainel";
-import CasaJardimMirante from "./views/CasaJardimMirante";
+import DashboardImovel from "./components/DashboardImovel";
 import PasswordGate from "./components/PasswordGate";
 import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
 import Consorcios from "./views/Consorcios";
@@ -312,7 +312,7 @@ export default function App() {
           {abaAtiva === "geral" && <PainelGeral />}
           {abaAtiva === "empresa" && <ControleEmpresa />}
           {abaAtiva === "pessoal" && <SaidasPainel />}
-          {abaAtiva === "imoveis" && <CasaJardimMirante />}
+          {abaAtiva === "imoveis" && <DashboardImovel />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes" && (
             <CarteiraInvestimentos />
           )}
