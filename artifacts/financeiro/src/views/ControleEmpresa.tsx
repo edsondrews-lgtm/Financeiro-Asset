@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Building2, Plus, Trash2, Edit2, X, ArrowUpRight, DollarSign, Percent, TrendingUp, Calendar, PieChart } from 'lucide-react';
+import {
+  Building2, Plus, Trash2, Edit2, X,
+  ArrowUpRight, DollarSign, Percent, TrendingUp,
+  Calendar, FileText, BarChart3, Receipt, Layers,
+} from 'lucide-react';
 
 interface NotaFiscal {
   id: string;
@@ -28,6 +32,19 @@ interface Fechamento {
   observacao: string;
 }
 
+const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const MESES_CURTOS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+const TIPO_CORES: Record<string, string> = {
+  CONTABILIDADE: 'bg-blue-100 text-blue-700',
+  CERTIFICADO_DIGITAL: 'bg-purple-100 text-purple-700',
+  IMPOSTOS: 'bg-orange-100 text-orange-700',
+  'PRO LABORE': 'bg-teal-100 text-teal-700',
+  OUTROS: 'bg-slate-100 text-slate-600',
+};
+
 export default function ControleEmpresa() {
   const [subAba, setSubAba] = useState('dashboard');
   const [loading, setLoading] = useState(false);
@@ -49,43 +66,19 @@ export default function ControleEmpresa() {
     try {
       const { data: n } = await supabase.from('empresa_notas_fiscais').select('*').order('data_emissao', { ascending: false });
       if (n) setNotas(n);
-
-      const { data: d, error: erroDespesas } = await supabase.from('empresa_despesas').select('*');
-      if (erroDespesas) {
-        console.error('Erro Supabase Despesas:', erroDespesas.message);
-      } else if (d) {
-        setDespesas(d.map(item => ({ ...item, data_vencimento: item.data_vencimento || item.data || item.vencimento || '' })));
-      }
-
+      const { data: d } = await supabase.from('empresa_despesas').select('*');
+      if (d) setDespesas(d.map(item => ({ ...item, data_vencimento: item.data_vencimento || item.data || item.vencimento || '' })));
       const { data: f } = await supabase.from('empresa_controle_fechamento').select('*').order('id', { ascending: false }).limit(1);
-      if (f && f[0]) {
-        setFechamento({
-          data_limite: f[0].data_limite || '2026-05-28',
-          horario_limite: (f[0].horario_limite || '23:59').substring(0, 5),
-          observacao: f[0].observacao || ''
-        });
-      }
+      if (f && f[0]) setFechamento({ data_limite: f[0].data_limite || '2026-05-28', horario_limite: (f[0].horario_limite || '23:59').substring(0, 5), observacao: f[0].observacao || '' });
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
 
   async function salvarNota(e: React.FormEvent) {
     e.preventDefault();
-    const dados = {
-      numero_nota: novaNota.numero_nota,
-      data_emissao: novaNota.data_emissao,
-      tomador: novaNota.tomador || 'O tomador e o intermediário não foram identificados pelo emitente',
-      servico: novaNota.servico,
-      valor: parseFloat(novaNota.valor),
-      aliquota_imposto: Number(mesAtivo) >= 6 ? 7.00 : 6.00
-    };
+    const dados = { numero_nota: novaNota.numero_nota, data_emissao: novaNota.data_emissao, tomador: novaNota.tomador || 'O tomador e o intermediário não foram identificados pelo emitente', servico: novaNota.servico, valor: parseFloat(novaNota.valor), aliquota_imposto: Number(mesAtivo) >= 6 ? 7.00 : 6.00 };
     try {
-      if (idEditando) {
-        const { error } = await supabase.from('empresa_notas_fiscais').update(dados).eq('id', idEditando);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('empresa_notas_fiscais').insert([dados]);
-        if (error) throw error;
-      }
+      if (idEditando) await supabase.from('empresa_notas_fiscais').update(dados).eq('id', idEditando);
+      else await supabase.from('empresa_notas_fiscais').insert([dados]);
       setModalNota(false); setIdEditando(null);
       setNovaNota({ numero_nota: '', data_emissao: `${anoAtivo}-${mesAtivo}-01`, tomador: '', servico: '', valor: '' });
       buscarDados();
@@ -94,19 +87,10 @@ export default function ControleEmpresa() {
 
   async function salvarDespesa(e: React.FormEvent) {
     e.preventDefault();
-    const dados = {
-      tipo: novaDespesa.tipo, descricao: novaDespesa.descricao, periodicidade: novaDespesa.periodicidade,
-      recorrente: novaDespesa.recorrente, valor: parseFloat(novaDespesa.valor),
-      data_vencimento: novaDespesa.data_vencimento || null
-    };
+    const dados = { tipo: novaDespesa.tipo, descricao: novaDespesa.descricao, periodicidade: novaDespesa.periodicidade, recorrente: novaDespesa.recorrente, valor: parseFloat(novaDespesa.valor), data_vencimento: novaDespesa.data_vencimento || null };
     try {
-      if (idEditando) {
-        const { error } = await supabase.from('empresa_despesas').update(dados).eq('id', idEditando);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('empresa_despesas').insert([dados]);
-        if (error) throw error;
-      }
+      if (idEditando) await supabase.from('empresa_despesas').update(dados).eq('id', idEditando);
+      else await supabase.from('empresa_despesas').insert([dados]);
       setModalDespesa(false); setIdEditando(null);
       setNovaDespesa({ tipo: 'CONTABILIDADE', descricao: '', periodicidade: 'Mensal', recorrente: 'Não', valor: '', data_vencimento: `${anoAtivo}-${mesAtivo}-01` });
       buscarDados();
@@ -116,9 +100,7 @@ export default function ControleEmpresa() {
   async function atualizarFechamento(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const { error } = await supabase.from('empresa_controle_fechamento').insert([fechamento]);
-      if (error) throw error;
-      alert('Controle de período atualizado!');
+      await supabase.from('empresa_controle_fechamento').insert([fechamento]);
       buscarDados();
     } catch (err: any) { alert(err.message); }
   }
@@ -136,23 +118,10 @@ export default function ControleEmpresa() {
   }
 
   async function deletarRegistro(tabela: string, id: string) {
-    if (!confirm('Tem certeza que deseja excluir este registro?')) return;
-    try {
-      const { error } = await supabase.from(tabela).delete().eq('id', id);
-      if (error) throw error;
-      buscarDados();
-    } catch (err: any) { alert(err.message); }
+    if (!confirm('Excluir este registro?')) return;
+    try { await supabase.from(tabela).delete().eq('id', id); buscarDados(); }
+    catch (err: any) { alert(err.message); }
   }
-
-  // Helpers de data
-  const obterDiaSeguinteFormatado = (dataStr: string) => {
-    if (!dataStr) return '—';
-    const partes = dataStr.split('-');
-    if (partes.length !== 3) return dataStr;
-    const data = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
-    data.setDate(data.getDate() + 1);
-    return `${String(data.getDate()).padStart(2, '0')}/${String(data.getMonth() + 1).padStart(2, '0')}/${data.getFullYear()}`;
-  };
 
   const formatarData = (dStr: string) => {
     if (!dStr) return '—';
@@ -160,402 +129,471 @@ export default function ControleEmpresa() {
     return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : dStr;
   };
 
-  // Filtragem
+  const obterDiaSeguinteFormatado = (dataStr: string) => {
+    if (!dataStr) return '—';
+    const p = dataStr.split('-');
+    if (p.length !== 3) return dataStr;
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    d.setDate(d.getDate() + 1);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  };
+
   const prefixoDataAlvo = `${anoAtivo}-${mesAtivo}`;
-  const notasFiltradas = notas.filter(n => n.data_emissao && n.data_emissao.substring(0, prefixoDataAlvo.length) === prefixoDataAlvo);
+  const notasFiltradas = notas.filter(n => n.data_emissao?.substring(0, prefixoDataAlvo.length) === prefixoDataAlvo);
   const despesasFiltradas = despesas.filter(d => {
-    if (!d.data_vencimento || d.data_vencimento === '') return true;
-    if (d.periodicidade === 'Anual') return true;
+    if (!d.data_vencimento || d.periodicidade === 'Anual') return true;
     return d.data_vencimento.substring(0, prefixoDataAlvo.length) === prefixoDataAlvo;
   });
 
-  // Cálculos mensais
-  const faturamentoMes = notasFiltradas.reduce((sum, n) => sum + (Number(n.valor) || 0), 0);
+  const faturamentoMes = notasFiltradas.reduce((s, n) => s + (Number(n.valor) || 0), 0);
   const aliquotaAtual = Number(mesAtivo) >= 6 ? 0.07 : 0.06;
   const impostoEstimado = faturamentoMes * aliquotaAtual;
-  const custosMensais = despesasFiltradas.reduce((sum, d) => {
-    const v = Number(d.valor) || 0;
-    return d.periodicidade === 'Anual' ? sum + (v / 12) : sum + v;
-  }, 0);
+  const custosMensais = despesasFiltradas.reduce((s, d) => { const v = Number(d.valor)||0; return d.periodicidade === 'Anual' ? s+(v/12) : s+v; }, 0);
   const lucroLiquidoMes = faturamentoMes - impostoEstimado - custosMensais;
 
-  // Cálculos anuais
   const notasAno = notas.filter(n => n.data_emissao?.startsWith(anoAtivo));
-  const faturamentoAno = notasAno.reduce((sum, n) => sum + (Number(n.valor) || 0), 0);
-  const impostoAno = notasAno.reduce((sum, n) => sum + ((Number(n.valor) || 0) * (Number(n.data_emissao.split('-')[1]) >= 6 ? 0.07 : 0.06)), 0);
-  const custosAnoTotal = despesas.reduce((sum, d) => {
-    const v = Number(d.valor) || 0;
-    if (d.periodicidade === 'Anual') return sum + v;
-    return d.data_vencimento?.startsWith(anoAtivo) ? sum + v : sum;
-  }, 0);
+  const faturamentoAno = notasAno.reduce((s, n) => s+(Number(n.valor)||0), 0);
+  const impostoAno = notasAno.reduce((s, n) => s+((Number(n.valor)||0)*(Number(n.data_emissao.split('-')[1])>=6?0.07:0.06)), 0);
+  const custosAnoTotal = despesas.reduce((s, d) => { const v=Number(d.valor)||0; if(d.periodicidade==='Anual') return s+v; return d.data_vencimento?.startsWith(anoAtivo)?s+v:s; }, 0);
   const lucroLiquidoAno = faturamentoAno - impostoAno - custosAnoTotal;
-  const mesesComMovimento = new Set(notas.filter(n => n.data_emissao?.startsWith(anoAtivo)).map(n => n.data_emissao.substring(0, 7))).size || 1;
+  const mesesComMovimento = new Set(notasAno.map(n => n.data_emissao.substring(0,7))).size || 1;
   const projecaoAnual = (lucroLiquidoAno / mesesComMovimento) * 12;
 
-  // Gráfico pizza SVG
-  const totalPizza = faturamentoMes || 1;
-  const pctLucro = Math.max(0, (lucroLiquidoMes / totalPizza) * 100);
-  const pctImposto = Math.max(0, (impostoEstimado / totalPizza) * 100);
-  const pctCustos = Math.max(0, (custosMensais / totalPizza) * 100);
+  const pctLucro  = faturamentoMes > 0 ? Math.max(0, lucroLiquidoMes / faturamentoMes * 100) : 0;
+  const pctImposto= faturamentoMes > 0 ? Math.max(0, impostoEstimado / faturamentoMes * 100) : 0;
+  const pctCustos = faturamentoMes > 0 ? Math.max(0, custosMensais / faturamentoMes * 100) : 0;
 
-  const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const TABS = [
+    { id: 'dashboard', label: 'Dashboard', icon: <BarChart3 size={13}/> },
+    { id: 'notas',     label: 'Notas Fiscais', icon: <Receipt size={13}/> },
+    { id: 'despesas',  label: 'Despesas', icon: <DollarSign size={13}/> },
+    { id: 'relatorios',label: 'Relatórios', icon: <Layers size={13}/> },
+  ];
 
   return (
-    <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
+    <div className="min-h-screen bg-slate-50/60">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-7">
 
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 border-b border-slate-100 pb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-md shadow-blue-100">
-            <Building2 size={24} />
+        {/* ── HEADER ── */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-200">
+              <Building2 size={22} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Empresa</h1>
+              <p className="text-slate-400 text-xs font-semibold mt-0.5">Simples Nacional · Controle de Faturamento</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Empresa</h2>
-            <p className="text-slate-500 text-xs font-semibold">Controle de Faturamento — Simples Nacional</p>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+              <Calendar size={13} className="text-slate-400" />
+              <select value={mesAtivo} onChange={e => setMesAtivo(e.target.value)} className="text-xs font-bold text-slate-700 outline-none bg-transparent pr-1">
+                {MESES.map((m, i) => <option key={i} value={String(i+1).padStart(2,'0')}>{m}</option>)}
+              </select>
+              <select value={anoAtivo} onChange={e => setAnoAtivo(e.target.value)} className="text-xs font-bold text-slate-700 outline-none bg-transparent">
+                <option>2026</option><option>2025</option>
+              </select>
+            </div>
+            <button
+              onClick={() => { setIdEditando(null); setNovaNota({ numero_nota:'', data_emissao:`${anoAtivo}-${mesAtivo}-01`, tomador:'', servico:'', valor:'' }); setModalNota(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200"
+            >
+              <Plus size={13}/> Nova Nota
+            </button>
+            <button
+              onClick={() => { setIdEditando(null); setNovaDespesa({ tipo:'CONTABILIDADE', descricao:'', periodicidade:'Mensal', recorrente:'Não', valor:'', data_vencimento:`${anoAtivo}-${mesAtivo}-01` }); setModalDespesa(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+            >
+              <Plus size={13}/> Nova Despesa
+            </button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <select value={mesAtivo} onChange={e => setMesAtivo(e.target.value)} className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none text-slate-700 shadow-sm">
-            {mesesNomes.map((m, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
-          </select>
-          <select value={anoAtivo} onChange={e => setAnoAtivo(e.target.value)} className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none text-slate-700 shadow-sm">
-            <option value="2026">2026</option><option value="2025">2025</option>
-          </select>
-          <button onClick={() => { setIdEditando(null); setNovaNota({ numero_nota: '', data_emissao: `${anoAtivo}-${mesAtivo}-01`, tomador: '', servico: '', valor: '' }); setModalNota(true); }} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
-            <Plus size={14} /> Nova Nota
-          </button>
-          <button onClick={() => { setIdEditando(null); setNovaDespesa({ tipo: 'CONTABILIDADE', descricao: '', periodicidade: 'Mensal', recorrente: 'Não', valor: '', data_vencimento: `${anoAtivo}-${mesAtivo}-01` }); setModalDespesa(true); }} className="flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm">
-            <Plus size={14} /> Nova Despesa
-          </button>
+
+        {/* ── TABS ── */}
+        <div className="flex gap-1 bg-white border border-slate-200 p-1 rounded-2xl w-fit shadow-sm">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setSubAba(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${subAba === t.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
+              {t.icon} {t.label}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* SUB-ABAS */}
-      <div className="flex gap-1 bg-slate-200/60 p-1 rounded-xl w-fit">
-        {['dashboard', 'notas', 'despesas', 'relatorios'].map(t => (
-          <button key={t} onClick={() => setSubAba(t)} className={`px-5 py-2 rounded-lg text-xs font-bold capitalize transition-all ${subAba === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            {t === 'notas' ? 'Notas Fiscais' : t}
-          </button>
-        ))}
-      </div>
+        {loading && <div className="flex items-center gap-2 text-xs font-bold text-blue-600"><div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"/> Carregando...</div>}
 
-      {loading && <p className="text-xs font-bold text-blue-600 animate-pulse">Carregando dados...</p>}
+        {/* ── DASHBOARD ── */}
+        {subAba === 'dashboard' && (
+          <div className="space-y-6">
 
-      {/* DASHBOARD */}
-      {subAba === 'dashboard' && (
-        <div className="space-y-6">
-
-          {/* CARDS SUPERIORES */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-blue-50 border border-blue-100 p-6 rounded-3xl relative overflow-hidden shadow-sm">
-              <span className="text-blue-600/80 font-bold text-xs uppercase tracking-wider block">Faturamento Mês</span>
-              <h3 className="text-2xl font-black text-blue-900 mt-2">R$ {faturamentoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-              <div className="absolute right-4 bottom-4 p-2 bg-blue-600 text-white rounded-xl"><ArrowUpRight size={16} /></div>
-            </div>
-            <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl relative overflow-hidden shadow-sm">
-              <span className="text-emerald-600/80 font-bold text-xs uppercase tracking-wider block">Faturamento Ano</span>
-              <h3 className="text-2xl font-black text-emerald-900 mt-2">R$ {faturamentoAno.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-              <div className="absolute right-4 bottom-4 p-2 bg-emerald-600 text-white rounded-xl"><TrendingUp size={16} /></div>
-            </div>
-            <div className="bg-orange-50 border border-orange-100 p-6 rounded-3xl relative overflow-hidden shadow-sm">
-              <span className="text-orange-600/80 font-bold text-xs uppercase tracking-wider block">Imposto Estimado</span>
-              <h3 className="text-2xl font-black text-orange-900 mt-2">R$ {impostoEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-              <div className="absolute right-4 bottom-4 p-2 bg-orange-600 text-white rounded-xl"><Percent size={14} /></div>
-            </div>
-            <div className="bg-rose-50 border border-rose-100 p-6 rounded-3xl relative overflow-hidden shadow-sm">
-              <span className="text-rose-600/80 font-bold text-xs uppercase tracking-wider block">Custos Mensais</span>
-              <h3 className="text-2xl font-black text-rose-900 mt-2">R$ {custosMensais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-              <div className="absolute right-4 bottom-4 p-2 bg-rose-600 text-white rounded-xl"><DollarSign size={16} /></div>
-            </div>
-          </div>
-
-          {/* CARDS DE LUCRO E PROJEÇÃO */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-6 rounded-3xl flex flex-col justify-between min-h-[140px] shadow-lg shadow-emerald-100/50">
-              <div>
-                <span className="text-xs font-bold text-emerald-100 uppercase tracking-wider block">Lucro Líquido Mês</span>
-                <h2 className="text-3xl font-black mt-2">R$ {lucroLiquidoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
-              </div>
-              <span className="text-[10px] text-emerald-100/80 font-medium">Líquido pronto disponível</span>
-            </div>
-            <div className="bg-gradient-to-br from-slate-700 to-slate-900 text-white p-6 rounded-3xl flex flex-col justify-between min-h-[140px] shadow-lg shadow-slate-200">
-              <div>
-                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">Lucro Líquido Ano</span>
-                <h2 className="text-3xl font-black text-emerald-400 mt-2">R$ {lucroLiquidoAno.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
-              </div>
-              <span className="text-[10px] text-slate-400 font-medium">Acumulado {anoAtivo}</span>
-            </div>
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-6 rounded-3xl flex flex-col justify-between min-h-[140px] shadow-lg shadow-blue-100/50">
-              <div>
-                <span className="text-xs font-bold text-blue-100 uppercase tracking-wider block">Projeção Anual Líquida</span>
-                <h2 className="text-3xl font-black mt-2">R$ {projecaoAnual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
-              </div>
-              <span className="text-[10px] text-blue-100/80 font-medium">Média baseada em {mesesComMovimento} mês(es) ativos</span>
-            </div>
-          </div>
-
-          {/* GRÁFICO PIZZA + CONTROLE DE PERÍODO */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-            {/* GRÁFICO PIZZA SVG NATIVO */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm md:col-span-1 flex flex-col justify-between">
-              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
-                <PieChart size={16} className="text-blue-600" /> Distribuição Mensal
-              </h4>
-              {faturamentoMes > 0 ? (
-                <div className="flex flex-col items-center justify-center space-y-4 py-2">
-                  <div className="relative w-32 h-32">
-                    <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-                      {/* Custos */}
-                      <circle
-                        cx="18" cy="18" r="15.915"
-                        fill="none" stroke="#f43f5e" strokeWidth="4"
-                        strokeDasharray={`${pctCustos} ${100 - pctCustos}`}
-                        strokeDashoffset="0"
-                      />
-                      {/* Imposto */}
-                      <circle
-                        cx="18" cy="18" r="15.915"
-                        fill="none" stroke="#f97316" strokeWidth="4"
-                        strokeDasharray={`${pctImposto} ${100 - pctImposto}`}
-                        strokeDashoffset={`-${pctCustos}`}
-                      />
-                      {/* Lucro */}
-                      <circle
-                        cx="18" cy="18" r="15.915"
-                        fill="none" stroke="#10b981" strokeWidth="4"
-                        strokeDasharray={`${pctLucro} ${100 - pctLucro}`}
-                        strokeDashoffset={`-${pctCustos + pctImposto}`}
-                      />
-                    </svg>
+            {/* KPIs principais */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Faturamento Mês', value: faturamentoMes, color: 'blue',   icon: <ArrowUpRight size={16}/> },
+                { label: 'Faturamento Ano', value: faturamentoAno, color: 'emerald', icon: <TrendingUp size={16}/> },
+                { label: 'Imposto Estimado', value: impostoEstimado, color: 'amber', icon: <Percent size={16}/> },
+                { label: 'Custos Mensais',  value: custosMensais,   color: 'rose',   icon: <DollarSign size={16}/> },
+              ].map((card, i) => (
+                <div key={i} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{card.label}</span>
+                    <div className={`p-1.5 rounded-lg bg-${card.color}-50 text-${card.color}-600`}>{card.icon}</div>
                   </div>
-                  <div className="w-full text-[11px] grid grid-cols-3 gap-1 font-bold text-center">
-                    <div className="text-emerald-600">Lucro<br />{pctLucro.toFixed(0)}%</div>
-                    <div className="text-orange-500">Imposto<br />{pctImposto.toFixed(0)}%</div>
-                    <div className="text-rose-500">Custos<br />{pctCustos.toFixed(0)}%</div>
-                  </div>
+                  <p className="text-xl font-black text-slate-900 mt-3 tabular-nums">{fmt(card.value)}</p>
                 </div>
-              ) : (
-                <div className="text-center py-8 text-slate-400 text-xs font-semibold">Insira faturamento para gerar o gráfico.</div>
-              )}
+              ))}
             </div>
 
-            {/* CONTROLE DE PERÍODO */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm md:col-span-2 flex flex-col justify-between">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                    <Calendar size={18} className="text-amber-500" /> Controle de Período de Lançamento
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-0.5">Gerencie os prazos limites para o fechamento mensal</p>
-                </div>
-                <div className="p-3.5 bg-amber-50/70 border border-amber-100/70 rounded-xl space-y-1">
-                  <p className="text-[13px] text-slate-600 font-medium">
-                    Lançamentos concluídos até: <span className="text-slate-400 font-normal">{formatarData(fechamento.data_limite)} às {fechamento.horario_limite}</span>.
+            {/* Lucro + Projeção */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-6 text-white shadow-lg shadow-emerald-100">
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-200">Lucro Líquido Mês</p>
+                <p className="text-3xl font-black mt-2 tabular-nums">{fmt(lucroLiquidoMes)}</p>
+                <p className="text-[10px] text-emerald-300 mt-2 font-medium">Disponível após impostos e custos</p>
+              </div>
+              <div className="bg-gradient-to-br from-slate-800 to-slate-950 rounded-2xl p-6 text-white shadow-lg shadow-slate-200">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Lucro Líquido Ano</p>
+                <p className="text-3xl font-black mt-2 text-emerald-400 tabular-nums">{fmt(lucroLiquidoAno)}</p>
+                <p className="text-[10px] text-slate-500 mt-2 font-medium">Acumulado {anoAtivo}</p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg shadow-blue-100">
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue-300">Projeção Anual Líquida</p>
+                <p className="text-3xl font-black mt-2 tabular-nums">{fmt(projecaoAnual)}</p>
+                <p className="text-[10px] text-blue-300 mt-2 font-medium">Baseado em {mesesComMovimento} mês(es) ativo(s)</p>
+              </div>
+            </div>
+
+            {/* Distribuição + Período */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+              {/* Gráfico de distribuição */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-5 flex items-center gap-2">
+                  <BarChart3 size={13} className="text-blue-500"/> Distribuição do Faturamento
+                </h4>
+                {faturamentoMes > 0 ? (
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Lucro Líquido', pct: pctLucro,   valor: lucroLiquidoMes, bar: 'bg-emerald-500' },
+                      { label: 'Custos',        pct: pctCustos,  valor: custosMensais,    bar: 'bg-rose-500' },
+                      { label: 'Impostos',      pct: pctImposto, valor: impostoEstimado,  bar: 'bg-amber-500' },
+                    ].map((item, i) => (
+                      <div key={i} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-600">{item.label}</span>
+                          <span className="text-[11px] font-black text-slate-800 tabular-nums">{item.pct.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2">
+                          <div className={`h-2 rounded-full ${item.bar} transition-all`} style={{ width: `${item.pct}%` }}/>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-semibold tabular-nums">{fmt(item.valor)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-slate-300 text-xs font-bold">Sem faturamento neste mês</div>
+                )}
+              </div>
+
+              {/* Controle de Período */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm lg:col-span-2">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Calendar size={13} className="text-amber-500"/> Controle de Período
+                </h4>
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-5 space-y-1.5">
+                  <p className="text-xs text-slate-700 font-semibold">
+                    Lançamentos concluídos até: <span className="font-black text-slate-900">{formatarData(fechamento.data_limite)}</span> às <span className="font-black text-slate-900">{fechamento.horario_limite}</span>
                   </p>
-                  <p className="text-[13px] text-amber-900 font-medium">
-                    👉 Para novas notas, considere extratos{' '}
-                    <span className="text-amber-950 font-black underline">
-                      A PARTIR DE: {obterDiaSeguinteFormatado(fechamento.data_limite)}
+                  <p className="text-xs text-amber-800 font-bold">
+                    👉 Novas notas a partir de <span className="underline decoration-dotted">{obterDiaSeguinteFormatado(fechamento.data_limite)}</span>
+                  </p>
+                </div>
+                <form onSubmit={atualizarFechamento} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Notas emitidas até</label>
+                    <input type="date" value={fechamento.data_limite} onChange={e => setFechamento({...fechamento, data_limite: e.target.value})}
+                      className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 focus:bg-white transition-all text-slate-700"/>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Horário limite</label>
+                    <input type="time" value={fechamento.horario_limite} onChange={e => setFechamento({...fechamento, horario_limite: e.target.value})}
+                      className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 focus:bg-white transition-all text-slate-700"/>
+                  </div>
+                  <button type="submit" className="h-10 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-amber-100 uppercase tracking-wider">
+                    Atualizar
+                  </button>
+                </form>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ── NOTAS FISCAIS ── */}
+        {subAba === 'notas' && (
+          <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <p className="text-sm font-black text-slate-900">Notas Fiscais</p>
+                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">{MESES[Number(mesAtivo)-1]} {anoAtivo} · {notasFiltradas.length} registro{notasFiltradas.length !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="bg-emerald-50 px-3 py-1.5 rounded-xl">
+                <span className="text-xs font-black text-emerald-700 tabular-nums">{fmt(faturamentoMes)}</span>
+                <span className="text-[10px] text-emerald-500 font-semibold ml-1">total</span>
+              </div>
+            </div>
+
+            {notasFiltradas.length === 0 ? (
+              <div className="py-20 text-center">
+                <FileText size={32} className="text-slate-200 mx-auto mb-3"/>
+                <p className="text-slate-400 text-sm font-bold">Nenhuma nota fiscal neste período</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {/* Header da tabela */}
+                <div className="grid grid-cols-12 px-6 py-2.5 bg-slate-50">
+                  <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data</span>
+                  <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nota</span>
+                  <span className="col-span-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tomador</span>
+                  <span className="col-span-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Serviço</span>
+                  <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Valor</span>
+                  <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ações</span>
+                </div>
+                {notasFiltradas.map(nota => (
+                  <div key={nota.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50/60 transition-colors">
+                    <span className="col-span-1 text-xs text-slate-500 font-semibold">{formatarData(nota.data_emissao)}</span>
+                    <span className="col-span-1">
+                      <span className="inline-flex items-center px-2 py-1 bg-slate-100 rounded-lg text-[10px] font-black text-slate-600 font-mono">{nota.numero_nota}</span>
                     </span>
-                  </p>
-                </div>
+                    <span className="col-span-4 text-xs text-slate-600 font-medium truncate pr-4">{nota.tomador}</span>
+                    <span className="col-span-4 text-xs text-slate-800 font-semibold pr-4">{nota.servico}</span>
+                    <span className="col-span-1 text-xs font-black text-emerald-600 text-right tabular-nums">{fmt(Number(nota.valor))}</span>
+                    <div className="col-span-1 flex items-center justify-center gap-1">
+                      <button onClick={() => prepararEdicaoNota(nota)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit2 size={13}/></button>
+                      <button onClick={() => deletarRegistro('empresa_notas_fiscais', nota.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={13}/></button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <form onSubmit={atualizarFechamento} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end mt-5">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider block">Notas emitidas até</label>
-                  <input
-                    type="date"
-                    value={fechamento.data_limite}
-                    onChange={e => setFechamento({ ...fechamento, data_limite: e.target.value })}
-                    className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-500 focus:bg-white transition-all text-slate-700 shadow-inner"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider block">Horário limite</label>
-                  <input
-                    type="time"
-                    value={fechamento.horario_limite}
-                    onChange={e => setFechamento({ ...fechamento, horario_limite: e.target.value })}
-                    className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-500 focus:bg-white transition-all text-slate-700 shadow-inner"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full h-[46px] bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-orange-100 uppercase tracking-wider active:scale-[0.98]"
-                >
-                  Atualizar Controle
-                </button>
-              </form>
+            )}
+          </div>
+        )}
+
+        {/* ── DESPESAS ── */}
+        {subAba === 'despesas' && (
+          <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <p className="text-sm font-black text-slate-900">Despesas & Custos</p>
+                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">{despesasFiltradas.length} registro{despesasFiltradas.length !== 1 ? 's' : ''} no período</p>
+              </div>
+              <div className="bg-rose-50 px-3 py-1.5 rounded-xl">
+                <span className="text-xs font-black text-rose-700 tabular-nums">{fmt(custosMensais)}</span>
+                <span className="text-[10px] text-rose-400 font-semibold ml-1">total mensal</span>
+              </div>
             </div>
 
-          </div>
-        </div>
-      )}
-
-      {/* NOTAS FISCAIS */}
-      {subAba === 'notas' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-            <span className="text-sm font-bold text-slate-800">Listagem de Notas do Período</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3.5 px-6">Data</th><th className="py-3.5 px-6">Nota</th><th className="py-3.5 px-6">Tomador</th><th className="py-3.5 px-6">Serviço</th><th className="py-3.5 px-6 text-right">Valor</th><th className="py-3.5 px-6 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {notasFiltradas.length === 0 ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-bold">Nenhuma nota fiscal encontrada.</td></tr>
-                ) : notasFiltradas.map(nota => (
-                  <tr key={nota.id} className="border-b border-slate-50 hover:bg-slate-50/40 transition-all">
-                    <td className="py-4 px-6 text-slate-500">{formatarData(nota.data_emissao)}</td>
-                    <td className="py-4 px-6 font-mono font-bold"><span className="bg-slate-100 px-2 py-1 rounded text-slate-600">{nota.numero_nota}</span></td>
-                    <td className="py-4 px-6 text-slate-500 max-w-[220px] truncate">{nota.tomador}</td>
-                    <td className="py-4 px-6 font-semibold text-slate-700">{nota.servico}</td>
-                    <td className="py-4 px-6 text-right font-bold text-emerald-600">R$ {Number(nota.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    <td className="py-4 px-6 text-center space-x-2">
-                      <button onClick={() => prepararEdicaoNota(nota)} className="text-blue-500 hover:text-blue-700 p-1"><Edit2 size={15} /></button>
-                      <button onClick={() => deletarRegistro('empresa_notas_fiscais', nota.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={15} /></button>
-                    </td>
-                  </tr>
+            {despesasFiltradas.length === 0 ? (
+              <div className="py-20 text-center">
+                <DollarSign size={32} className="text-slate-200 mx-auto mb-3"/>
+                <p className="text-slate-400 text-sm font-bold">Nenhum custo registrado neste período</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                <div className="grid grid-cols-12 px-6 py-2.5 bg-slate-50">
+                  <span className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo</span>
+                  <span className="col-span-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descrição</span>
+                  <span className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Periodicidade</span>
+                  <span className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Valor</span>
+                  <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ações</span>
+                </div>
+                {despesasFiltradas.map(desp => (
+                  <div key={desp.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50/60 transition-colors">
+                    <div className="col-span-2">
+                      <span className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide ${TIPO_CORES[desp.tipo] || 'bg-slate-100 text-slate-600'}`}>{desp.tipo.replace('_',' ')}</span>
+                    </div>
+                    <span className="col-span-5 text-xs text-slate-800 font-semibold pr-4">{desp.descricao || 'Sem descrição'}</span>
+                    <span className="col-span-2">
+                      <span className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-bold ${desp.periodicidade === 'Anual' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>{desp.periodicidade}</span>
+                    </span>
+                    <span className="col-span-2 text-xs font-black text-rose-600 text-right tabular-nums">{fmt(Number(desp.valor))}</span>
+                    <div className="col-span-1 flex items-center justify-center gap-1">
+                      <button onClick={() => prepararEdicaoDespesa(desp)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit2 size={13}/></button>
+                      <button onClick={() => deletarRegistro('empresa_despesas', desp.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={13}/></button>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* DESPESAS */}
-      {subAba === 'despesas' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 text-sm font-bold text-slate-800 bg-slate-50/50">Listagem de Despesas e Custos</div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3.5 px-6">Tipo</th><th className="py-3.5 px-6">Descrição</th><th className="py-3.5 px-6">Periodicidade</th><th className="py-3.5 px-6 text-right">Valor Bruto</th><th className="py-3.5 px-6 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {despesasFiltradas.length === 0 ? (
-                  <tr><td colSpan={5} className="py-8 text-center text-slate-400 font-bold">Nenhum custo registrado neste mês.</td></tr>
-                ) : despesasFiltradas.map(desp => (
-                  <tr key={desp.id} className="border-b border-slate-50 hover:bg-slate-50/40 transition-all">
-                    <td className="py-4 px-6"><span className="bg-slate-100 px-2 py-1 rounded text-slate-600 font-bold text-[10px]">{desp.tipo}</span></td>
-                    <td className="py-4 px-6 font-semibold text-slate-700">{desp.descricao || 'Sem descrição'}</td>
-                    <td className="py-4 px-6 font-bold text-slate-600">{desp.periodicidade}</td>
-                    <td className="py-4 px-6 text-right font-bold text-rose-600">R$ {Number(desp.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    <td className="py-4 px-6 text-center space-x-2">
-                      <button onClick={() => prepararEdicaoDespesa(desp)} className="text-blue-500 hover:text-blue-700 p-1"><Edit2 size={15} /></button>
-                      <button onClick={() => deletarRegistro('empresa_despesas', desp.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={15} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+        {/* ── RELATÓRIOS ── */}
+        {subAba === 'relatorios' && (
+          <div className="space-y-4">
+            {/* Totais anuais */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Faturamento Anual', value: faturamentoAno, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { label: 'Impostos Anuais',   value: impostoAno,    color: 'text-amber-600',   bg: 'bg-amber-50' },
+                { label: 'Custos Anuais',     value: custosAnoTotal,color: 'text-rose-600',    bg: 'bg-rose-50' },
+                { label: 'Lucro Anual',       value: lucroLiquidoAno,color:'text-blue-700',    bg: 'bg-blue-50' },
+              ].map((c,i) => (
+                <div key={i} className={`${c.bg} rounded-2xl p-5 border border-white/60`}>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{c.label}</p>
+                  <p className={`text-xl font-black mt-2 tabular-nums ${c.color}`}>{fmt(c.value)}</p>
+                </div>
+              ))}
+            </div>
 
-      {/* RELATÓRIOS */}
-      {subAba === 'relatorios' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 text-sm font-bold text-slate-800 bg-slate-50/50">Relatório Mensal Detalhado — {anoAtivo}</div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase">
-                  <th className="py-3.5 px-6">Mês</th><th className="py-3.5 px-6">Faturamento</th><th className="py-3.5 px-6">%</th><th className="py-3.5 px-6">Imposto Est.</th><th className="py-3.5 px-6">Custos</th><th className="py-3.5 px-6">Lucro</th>
-                </tr>
-              </thead>
-              <tbody>
+            {/* Tabela mensal */}
+            <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <p className="text-sm font-black text-slate-900">Relatório Mês a Mês — {anoAtivo}</p>
+              </div>
+              <div className="divide-y divide-slate-50">
+                <div className="grid grid-cols-12 px-6 py-2.5 bg-slate-50">
+                  {['Mês','Faturamento','Alíquota','Imposto Est.','Custos','Lucro Líquido','Margem'].map((h,i) => (
+                    <span key={i} className={`${i===0?'col-span-2':i===6?'col-span-2':'col-span-1'} text-[10px] font-black text-slate-400 uppercase tracking-widest ${i>=5?'text-right':''}`}>{h}</span>
+                  ))}
+                </div>
                 {['01','02','03','04','05','06','07','08','09','10','11','12'].map(mKey => {
-                  const mNom = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][Number(mKey)-1];
                   const nM = notas.filter(n => n.data_emissao?.startsWith(`${anoAtivo}-${mKey}`));
-                  const fatM = nM.reduce((sum, n) => sum + (Number(n.valor) || 0), 0);
+                  const fatM = nM.reduce((s,n) => s+(Number(n.valor)||0), 0);
                   const alM = Number(mKey) >= 6 ? 0.07 : 0.06;
                   const impM = fatM * alM;
-                  const custM = despesas.reduce((sum, d) => {
-                    const v = Number(d.valor) || 0;
-                    if (d.periodicidade === 'Anual') return sum + (v / 12);
-                    return d.data_vencimento && d.data_vencimento.substring(0, 7) === `${anoAtivo}-${mKey}` ? sum + v : sum;
-                  }, 0);
+                  const custM = despesas.reduce((s,d) => { const v=Number(d.valor)||0; if(d.periodicidade==='Anual') return s+(v/12); return d.data_vencimento?.substring(0,7)===`${anoAtivo}-${mKey}`?s+v:s; }, 0);
                   const lucM = fatM - impM - custM;
+                  const margemM = fatM > 0 ? (lucM/fatM*100) : 0;
+                  const isAtivo = mesAtivo === mKey;
+                  const semDados = fatM === 0;
+
                   return (
-                    <tr key={mKey} className={`border-b border-slate-50 hover:bg-slate-50/50 ${mesAtivo === mKey ? 'bg-blue-50/40 font-bold' : ''}`}>
-                      <td className="py-4 px-6 text-slate-800 font-bold">{mNom}</td>
-                      <td className="py-4 px-6 text-emerald-600 font-semibold">R$ {fatM.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td className="py-4 px-6 text-slate-400">{(alM * 100).toFixed(2)}%</td>
-                      <td className="py-4 px-6 text-amber-600">R$ {impM.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td className="py-4 px-6 text-rose-600">R$ {custM.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td className={`py-4 px-6 font-bold ${lucM >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>R$ {lucM.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                    </tr>
+                    <div key={mKey} className={`grid grid-cols-12 px-6 py-3.5 items-center transition-colors ${isAtivo ? 'bg-blue-50/60' : 'hover:bg-slate-50/60'} ${semDados ? 'opacity-40' : ''}`}>
+                      <div className="col-span-2 flex items-center gap-2">
+                        <span className={`text-xs font-black ${isAtivo ? 'text-blue-700' : 'text-slate-700'}`}>{MESES_CURTOS[Number(mKey)-1]}</span>
+                        {isAtivo && <span className="text-[9px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-md">ATU</span>}
+                      </div>
+                      <span className="col-span-1 text-xs font-black text-emerald-600 tabular-nums">{fatM>0?fmt(fatM):'—'}</span>
+                      <span className="col-span-1 text-xs text-slate-400 font-semibold">{(alM*100).toFixed(0)}%</span>
+                      <span className="col-span-1 text-xs text-amber-600 font-semibold tabular-nums">{impM>0?fmt(impM):'—'}</span>
+                      <span className="col-span-2 text-xs text-rose-600 font-semibold tabular-nums">{custM>0?fmt(custM):'—'}</span>
+                      <span className={`col-span-1 text-xs font-black text-right tabular-nums ${lucM>=0?'text-slate-900':'text-rose-600'}`}>{fatM>0?fmt(lucM):'—'}</span>
+                      <div className="col-span-2 flex items-center gap-2 justify-end">
+                        {fatM > 0 && (
+                          <>
+                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${margemM>=50?'bg-emerald-500':margemM>=25?'bg-amber-500':'bg-rose-500'}`} style={{width:`${Math.max(0,Math.min(100,margemM))}%`}}/>
+                            </div>
+                            <span className={`text-[10px] font-black tabular-nums w-9 text-right ${margemM>=50?'text-emerald-600':margemM>=25?'text-amber-600':'text-rose-600'}`}>{margemM.toFixed(0)}%</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* MODAL NOTA */}
+      </div>
+
+      {/* ── MODAL NOTA ── */}
       {modalNota && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-100">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-slate-800">{idEditando ? 'Editar Nota Fiscal' : 'Lançar Nota Fiscal'}</h3>
-              <button onClick={() => { setModalNota(false); setIdEditando(null); }} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-            </div>
-            <form onSubmit={salvarNota} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <input type="text" required placeholder="Número Nota" value={novaNota.numero_nota} onChange={e => setNovaNota({...novaNota, numero_nota: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
-                <input type="date" required value={novaNota.data_emissao} onChange={e => setNovaNota({...novaNota, data_emissao: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg"><Receipt size={15}/></div>
+                <h3 className="text-sm font-black text-slate-900">{idEditando ? 'Editar Nota Fiscal' : 'Lançar Nota Fiscal'}</h3>
               </div>
-              <input type="text" placeholder="Nome do Tomador" value={novaNota.tomador} onChange={e => setNovaNota({...novaNota, tomador: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
-              <input type="text" required placeholder="Serviço Prestado" value={novaNota.servico} onChange={e => setNovaNota({...novaNota, servico: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
-              <input type="number" step="0.01" required placeholder="Valor Bruto (R$)" value={novaNota.valor} onChange={e => setNovaNota({...novaNota, valor: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
-              <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 hover:bg-blue-700 transition-all">
-                {idEditando ? 'Salvar Alterações' : 'Salvar Nota Fiscal'}
+              <button onClick={() => { setModalNota(false); setIdEditando(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"><X size={16}/></button>
+            </div>
+            <form onSubmit={salvarNota} className="p-6 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nº da Nota *</label>
+                  <input type="text" required placeholder="Ex: 000123" value={novaNota.numero_nota} onChange={e => setNovaNota({...novaNota, numero_nota: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white transition-all text-slate-700"/>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data de Emissão *</label>
+                  <input type="date" required value={novaNota.data_emissao} onChange={e => setNovaNota({...novaNota, data_emissao: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white transition-all text-slate-700"/>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tomador</label>
+                <input type="text" placeholder="Nome do tomador" value={novaNota.tomador} onChange={e => setNovaNota({...novaNota, tomador: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white transition-all text-slate-700"/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Serviço Prestado *</label>
+                <input type="text" required placeholder="Descrição do serviço" value={novaNota.servico} onChange={e => setNovaNota({...novaNota, servico: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white transition-all text-slate-700"/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Bruto (R$) *</label>
+                <input type="number" step="0.01" required placeholder="0,00" value={novaNota.valor} onChange={e => setNovaNota({...novaNota, valor: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white transition-all text-slate-700"/>
+              </div>
+              <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-blue-100 mt-2">
+                {idEditando ? 'Salvar Alterações' : 'Lançar Nota Fiscal'}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL DESPESA */}
+      {/* ── MODAL DESPESA ── */}
       {modalDespesa && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-100">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-slate-800">{idEditando ? 'Editar Custo / Despesa' : 'Lançar Custo / Despesa'}</h3>
-              <button onClick={() => { setModalDespesa(false); setIdEditando(null); }} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-rose-100 text-rose-600 rounded-lg"><DollarSign size={15}/></div>
+                <h3 className="text-sm font-black text-slate-900">{idEditando ? 'Editar Despesa' : 'Lançar Despesa'}</h3>
+              </div>
+              <button onClick={() => { setModalDespesa(false); setIdEditando(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"><X size={16}/></button>
             </div>
-            <form onSubmit={salvarDespesa} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <select value={novaDespesa.tipo} onChange={e => setNovaDespesa({...novaDespesa, tipo: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none text-slate-700">
-                  <option value="CONTABILIDADE">Contabilidade</option><option value="CERTIFICADO_DIGITAL">Certificado Digital</option>
-                  <option value="IMPOSTOS">Impostos</option><option value="PRO LABORE">Pró-labore</option><option value="OUTROS">Outros</option>
-                </select>
-                <select value={novaDespesa.periodicidade} onChange={e => setNovaDespesa({...novaDespesa, periodicidade: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none text-slate-700">
-                  <option value="Mensal">Mensal</option><option value="Anual">Anual</option>
-                </select>
+            <form onSubmit={salvarDespesa} className="p-6 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo</label>
+                  <select value={novaDespesa.tipo} onChange={e => setNovaDespesa({...novaDespesa, tipo: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-rose-400 focus:bg-white transition-all text-slate-700">
+                    <option value="CONTABILIDADE">Contabilidade</option>
+                    <option value="CERTIFICADO_DIGITAL">Certificado Digital</option>
+                    <option value="IMPOSTOS">Impostos</option>
+                    <option value="PRO LABORE">Pró-labore</option>
+                    <option value="OUTROS">Outros</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Periodicidade</label>
+                  <select value={novaDespesa.periodicidade} onChange={e => setNovaDespesa({...novaDespesa, periodicidade: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-rose-400 focus:bg-white transition-all text-slate-700">
+                    <option value="Mensal">Mensal</option>
+                    <option value="Anual">Anual</option>
+                  </select>
+                </div>
               </div>
-              <input type="text" required placeholder="Descrição" value={novaDespesa.descricao} onChange={e => setNovaDespesa({...novaDespesa, descricao: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" step="0.01" required placeholder="Valor (R$)" value={novaDespesa.valor} onChange={e => setNovaDespesa({...novaDespesa, valor: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
-                <input type="date" value={novaDespesa.data_vencimento} onChange={e => setNovaDespesa({...novaDespesa, data_vencimento: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none" />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descrição *</label>
+                <input type="text" required placeholder="Ex: Honorários contábeis mensais" value={novaDespesa.descricao} onChange={e => setNovaDespesa({...novaDespesa, descricao: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-rose-400 focus:bg-white transition-all text-slate-700"/>
               </div>
-              <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 hover:bg-blue-700 transition-all">
-                {idEditando ? 'Salvar Alterações' : 'Salvar Custo'}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor (R$) *</label>
+                  <input type="number" step="0.01" required placeholder="0,00" value={novaDespesa.valor} onChange={e => setNovaDespesa({...novaDespesa, valor: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-rose-400 focus:bg-white transition-all text-slate-700"/>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vencimento</label>
+                  <input type="date" value={novaDespesa.data_vencimento} onChange={e => setNovaDespesa({...novaDespesa, data_vencimento: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-rose-400 focus:bg-white transition-all text-slate-700"/>
+                </div>
+              </div>
+              <button type="submit" className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-rose-100 mt-2">
+                {idEditando ? 'Salvar Alterações' : 'Lançar Despesa'}
               </button>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }
