@@ -904,8 +904,12 @@ export default function Caixinhas() {
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Guardado</div>
-              <div className="text-2xl font-black text-slate-800 mt-1">{fmt(totalGuardado)}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">{caixinhas.length} caixinha{caixinhas.length !== 1 ? 's' : ''}</div>
+              <div className="text-2xl font-black text-slate-800 mt-1">
+                {fmt(totalDepositadoGlobal + totalRendimentoReal > 0
+                  ? totalDepositadoGlobal + totalRendimentoReal
+                  : totalGuardado)}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">{caixinhas.length} caixinha{caixinhas.length !== 1 ? 's' : ''} · c/ juros</div>
             </div>
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><PiggyBank size={20} /></div>
           </div>
