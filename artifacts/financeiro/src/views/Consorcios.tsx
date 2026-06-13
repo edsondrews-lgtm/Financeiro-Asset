@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import {
   FileText, Plus, X, TrendingUp, ChevronDown, ChevronUp,
   RefreshCw, Percent, Zap, CheckCircle2, Clock, Ban,
-  DollarSign, BarChart3, Edit2, Check, AlertTriangle,
+  DollarSign, BarChart3, Edit2, Check, AlertTriangle, RotateCcw,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -176,15 +176,30 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pago' | 'pendente' | 'cancelada'>('todos')
   const [paginaAtual, setPaginaAtual] = useState(1)
   const porPagina = 20
+  const [simulacao, setSimulacao] = useState<null | {
+    tipo: 'reduzir_parcela' | 'reduzir_prazo'
+    lance: number
+    novaParcelaMedio?: number
+    reducaoPorParcela?: number
+    nCancelar?: number
+    parcelasCancelar?: number[]
+  }>(null)
+  const [lances, setLances] = useState<any[]>([])
+  const [desfazendo, setDesfazendo] = useState(false)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const { data, error } = await supabase
-      .from('parcelas_calculadas').select('*')
-      .eq('consorcio_id', consorcio.id)
-      .order('numero_parcela', { ascending: true })
+    const [{ data: parcelaData, error }, { data: lancesData }] = await Promise.all([
+      supabase.from('parcelas_calculadas').select('*')
+        .eq('consorcio_id', consorcio.id)
+        .order('numero_parcela', { ascending: true }),
+      supabase.from('lances_consorcio').select('*')
+        .eq('consorcio_id', consorcio.id)
+        .order('created_at', { ascending: false }),
+    ])
     if (error) { setErro('Erro: ' + error.message); setCarregando(false); return }
-    setParcelas(data || [])
+    setParcelas(parcelaData || [])
+    setLances(lancesData || [])
     setCarregando(false)
   }, [consorcio.id])
 
@@ -257,12 +272,29 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
     await carregar()
   }
 
-  async function processarLance() {
+  function simularLance() {
     const lance = parseFloat(valorLance)
-    if (isNaN(lance) || lance <= 0) { setErro('Valor inválido'); return }
-    setAplicando(true)
+    if (isNaN(lance) || lance <= 0 || pendentes.length === 0) { setErro('Valor inválido'); return }
+    setErro(null)
 
     if (tipoAmort === 'reduzir_parcela') {
+      const reducao = round2(lance / pendentes.length)
+      const novaMedia = round2(Math.max(0, (pendentes[0]?.valor_total ?? 0) - reducao))
+      setSimulacao({ tipo: tipoAmort, lance, novaParcelaMedio: novaMedia, reducaoPorParcela: reducao })
+    } else {
+      const valorRef = pendentes[0]?.valor_total ?? 0
+      const nCancelar = valorRef > 0 ? Math.floor(lance / valorRef) : 0
+      const aCancelar = [...pendentes].reverse().slice(0, nCancelar).map(p => p.numero_parcela)
+      setSimulacao({ tipo: tipoAmort, lance, nCancelar, parcelasCancelar: aCancelar })
+    }
+  }
+
+  async function aplicarLanceSimulado() {
+    if (!simulacao) return
+    const { lance, tipo } = simulacao
+    setAplicando(true)
+
+    if (tipo === 'reduzir_parcela') {
       const reducao = round2(lance / pendentes.length)
       for (const p of pendentes) {
         const novoTotal = round2(Math.max(0, p.valor_total - reducao))
@@ -276,7 +308,6 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
         }).eq('id', p.id)
       }
     } else {
-      // Reduzir prazo: cancela as últimas N parcelas
       const valorRef = pendentes[0]?.valor_total ?? 0
       if (valorRef > 0) {
         const nCancelar = Math.floor(lance / valorRef)
@@ -290,14 +321,51 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
       }
     }
 
-    // Registra o lance
     await supabase.from('lances_consorcio').insert({
       consorcio_id: consorcio.id, valor_lance: lance,
-      tipo_amortizacao: tipoAmort, parcela_inicio: pendentes[0]?.numero_parcela ?? 0,
+      tipo_amortizacao: tipo, parcela_inicio: pendentes[0]?.numero_parcela ?? 0,
     })
 
-    setAplicando(false); setModalLance(false); setValorLance('')
-    mostrarSucesso(`Lance de ${fmt(lance)} processado!`)
+    setAplicando(false); setModalLance(false); setValorLance(''); setSimulacao(null)
+    mostrarSucesso(`Lance de ${fmt(lance)} aplicado com sucesso!`)
+    await carregar()
+  }
+
+  async function desfazerUltimoLance() {
+    const ultimo = lances[0]
+    if (!ultimo) return
+    setDesfazendo(true)
+
+    if (ultimo.tipo_amortizacao === 'reduzir_parcela') {
+      // Restaura parcelas pendentes para base × fator_correcao
+      const fator = consorcio.fator_correcao
+      const aRestaurar = parcelas.filter(p => p.status === 'pendente')
+      for (const p of aRestaurar) {
+        await supabase.from('parcelas_calculadas').update({
+          valor_fundo_comum:   round2(p.base_fundo_comum   * fator),
+          valor_taxa_adm:      round2(p.base_taxa_adm       * fator),
+          valor_fundo_reserva: round2(p.base_fundo_reserva  * fator),
+          valor_total:         round2(p.base_total          * fator),
+          observacao: (p.observacao ?? '').replace(/\s*\|\s*Lance\s*-[R$\s\d.,]+/g, '').trim() || null,
+        }).eq('id', p.id)
+      }
+    } else {
+      // Restaura parcelas canceladas por este lance
+      const valorLanceStr = fmt(ultimo.valor_lance)
+      const aRestaurar = parcelas.filter(p =>
+        p.status === 'cancelada' && (p.observacao ?? '').includes(`Quitada por lance ${valorLanceStr}`)
+      )
+      for (const p of aRestaurar) {
+        await supabase.from('parcelas_calculadas').update({
+          status: 'pendente', observacao: null,
+        }).eq('id', p.id)
+      }
+    }
+
+    await supabase.from('lances_consorcio').delete().eq('id', ultimo.id)
+
+    setDesfazendo(false)
+    mostrarSucesso('Lance desfeito com sucesso!')
     await carregar()
   }
 
@@ -317,15 +385,21 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
             <p className="text-slate-400 text-xs">{fmt(consorcio.valor_bem)} · {consorcio.prazo} meses · Fator: {consorcio.fator_correcao.toFixed(4)}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => setModalIPCA(true)}
             className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold">
             <Percent size={13} /> Aplicar IPCA
           </button>
-          <button onClick={() => setModalLance(true)}
+          <button onClick={() => { setModalLance(true); setSimulacao(null); setValorLance('') }}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold">
-            <Zap size={13} /> Processar Lance
+            <Zap size={13} /> Simular Lance
           </button>
+          {lances.length > 0 && (
+            <button onClick={desfazerUltimoLance} disabled={desfazendo}
+              className="flex items-center gap-2 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+              <RotateCcw size={13} /> {desfazendo ? 'Desfazendo...' : `Desfazer lance (${fmt(lances[0]?.valor_lance)})`}
+            </button>
+          )}
           <button onClick={carregar} className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-xl">
             <RefreshCw size={14} className={carregando ? 'animate-spin' : ''} />
           </button>
@@ -409,40 +483,123 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
         </div>
       )}
 
-      {/* Modal Lance */}
+      {/* Modal Lance — Simulador */}
       {modalLance && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-violet-100 text-violet-600 rounded-lg"><Zap size={18} /></div>
-              <h3 className="text-sm font-bold text-slate-800">Processar Lance</h3>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor do Lance (R$)</label>
-              <input type="number" value={valorLance} onChange={e => setValorLance(e.target.value)} placeholder="Ex: 20000" min="0" step="0.01"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tipo de Amortização</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['reduzir_parcela', 'reduzir_prazo'] as const).map(t => (
-                  <button key={t} onClick={() => setTipoAmort(t)}
-                    className={`p-3 rounded-xl border text-xs text-left transition-all ${tipoAmort === t ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-500'}`}>
-                    <div className="font-black">{t === 'reduzir_parcela' ? 'Reduzir Parcela' : 'Reduzir Prazo'}</div>
-                    <div className="text-[10px] mt-0.5 opacity-70">
-                      {t === 'reduzir_parcela' ? 'Valor de cada parcela cai' : 'Remove parcelas do final'}
-                    </div>
-                  </button>
-                ))}
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
+
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-violet-100 text-violet-600 rounded-lg"><Zap size={18} /></div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Simulador de Lance</h3>
+                  <p className="text-[10px] text-slate-400">Simule antes de aplicar — nada é salvo até confirmar</p>
+                </div>
               </div>
+              <button onClick={() => { setModalLance(false); setSimulacao(null) }} className="p-1.5 text-slate-400 hover:text-slate-600"><X size={16} /></button>
             </div>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setModalLance(false)} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
-              <button onClick={processarLance} disabled={aplicando}
-                className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold disabled:opacity-50">
-                {aplicando ? 'Processando...' : 'Confirmar Lance'}
-              </button>
-            </div>
+
+            {!simulacao ? (
+              /* ── Etapa 1: Entrada ── */
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor do Lance (R$)</label>
+                  <input type="number" value={valorLance} onChange={e => setValorLance(e.target.value)} placeholder="Ex: 20000" min="0" step="0.01" autoFocus
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tipo de Amortização</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['reduzir_parcela', 'reduzir_prazo'] as const).map(t => (
+                      <button key={t} onClick={() => setTipoAmort(t)}
+                        className={`p-3 rounded-xl border text-xs text-left transition-all ${tipoAmort === t ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                        <div className="font-black">{t === 'reduzir_parcela' ? 'Reduzir Parcela' : 'Reduzir Prazo'}</div>
+                        <div className="text-[10px] mt-0.5 opacity-70">
+                          {t === 'reduzir_parcela' ? 'Valor mensal diminui' : 'Remove parcelas do final'}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end pt-1">
+                  <button onClick={() => { setModalLance(false); setSimulacao(null) }} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+                  <button onClick={simularLance}
+                    className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all">
+                    Simular →
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* ── Etapa 2: Preview da Simulação ── */
+              <>
+                <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl space-y-3">
+                  <div className="text-xs font-bold text-violet-700 uppercase tracking-wider">Resultado da Simulação</div>
+
+                  {simulacao.tipo === 'reduzir_parcela' ? (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Lance aplicado</span>
+                        <span className="font-bold text-violet-700">{fmt(simulacao.lance)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Redução por parcela</span>
+                        <span className="font-bold text-rose-500">-{fmt(simulacao.reducaoPorParcela ?? 0)}</span>
+                      </div>
+                      <div className="border-t border-violet-200 pt-2 flex justify-between">
+                        <span className="text-slate-500">Parcela atual (aprox.)</span>
+                        <span className="font-bold text-slate-700">{fmt(pendentes[0]?.valor_total ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-bold">Nova parcela</span>
+                        <span className="font-black text-emerald-600">{fmt(simulacao.novaParcelaMedio ?? 0)}</span>
+                      </div>
+                      <div className="text-[10px] text-violet-500">{pendentes.length} parcelas pendentes afetadas</div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Lance aplicado</span>
+                        <span className="font-bold text-violet-700">{fmt(simulacao.lance)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Parcelas a cancelar</span>
+                        <span className="font-bold text-rose-500">{simulacao.nCancelar} parcelas</span>
+                      </div>
+                      {simulacao.parcelasCancelar && simulacao.parcelasCancelar.length > 0 && (
+                        <div className="border-t border-violet-200 pt-2">
+                          <div className="text-[10px] text-violet-500 mb-1">Parcelas do final que serão canceladas:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {simulacao.parcelasCancelar.slice(0, 12).map(n => (
+                              <span key={n} className="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[10px] font-bold">#{n}</span>
+                            ))}
+                            {simulacao.parcelasCancelar.length > 12 && (
+                              <span className="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[10px]">+{simulacao.parcelasCancelar.length - 12} mais</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {simulacao.nCancelar === 0 && (
+                        <div className="text-xs text-amber-600">Lance insuficiente para cancelar ao menos 1 parcela.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl flex gap-2 text-xs text-amber-700">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                  <span>Esta ação irá modificar o banco de dados. Você pode desfazer depois clicando em <strong>"Desfazer lance"</strong>.</span>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-1">
+                  <button onClick={() => setSimulacao(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700">← Voltar</button>
+                  <button onClick={aplicarLanceSimulado} disabled={aplicando || (simulacao.tipo === 'reduzir_prazo' && (simulacao.nCancelar ?? 0) === 0)}
+                    className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+                    {aplicando ? 'Aplicando...' : 'Confirmar e Aplicar'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
