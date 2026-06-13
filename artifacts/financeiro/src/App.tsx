@@ -1,80 +1,104 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from './lib/supabaseClient';
-import ControleEmpresa from './views/ControleEmpresa';
-import SaidasPainel from './views/SaidasPainel';
-import DashboardImovel from './components/DashboardImovel';
-import PasswordGate from './components/PasswordGate';
-import CarteiraInvestimentos from './views/CarteiraInvestimentos';
-import Consorcios from './views/Consorcios';
-import Caixinhas from './views/Caixinhas';
+import React, { useState, useEffect } from "react";
+import { supabase } from "./lib/supabaseClient";
+import ControleEmpresa from "./views/ControleEmpresa";
+import SaidasPainel from "./views/SaidasPainel";
+import CasaJardimMirante from "./views/CasaJardimMirante";
+import PasswordGate from "./components/PasswordGate";
+import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
+import Consorcios from "./views/Consorcios";
+import Caixinhas from "./views/Caixinhas";
 import {
-  LayoutDashboard, Building2, Home, User, Wallet,
-  ArrowUpRight, DollarSign, Percent, TrendingUp,
-  PieChart, FileText, ChevronDown, PiggyBank,
-} from 'lucide-react';
+  LayoutDashboard,
+  Building2,
+  Home,
+  User,
+  Wallet,
+  ArrowUpRight,
+  DollarSign,
+  Percent,
+  TrendingUp,
+  PieChart,
+  FileText,
+  ChevronDown,
+  PiggyBank,
+} from "lucide-react";
 
-interface Nota { valor: number }
-interface Despesa { valor: number; periodicidade: string }
+interface Nota {
+  valor: number;
+}
+interface Despesa {
+  valor: number;
+  periodicidade: string;
+}
 
 export default function App() {
-  const [abaAtiva, setAbaAtiva] = useState('geral');
-  const [subAbaInvestimento, setSubAbaInvestimento] = useState('acoes');
+  const [abaAtiva, setAbaAtiva] = useState("geral");
+  const [subAbaInvestimento, setSubAbaInvestimento] = useState("acoes");
   const [menuInvestimentosAberto, setMenuInvestimentosAberto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notas, setNotas] = useState<Nota[]>([]);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
 
-  useEffect(() => { buscarDadosGlobais(); }, []);
+  useEffect(() => {
+    buscarDadosGlobais();
+  }, []);
 
   useEffect(() => {
     function fecharMenu(e: MouseEvent) {
       const alvo = e.target as HTMLElement;
-      if (!alvo.closest('#menu-investimentos')) {
+      if (!alvo.closest("#menu-investimentos")) {
         setMenuInvestimentosAberto(false);
       }
     }
-    document.addEventListener('mousedown', fecharMenu);
-    return () => document.removeEventListener('mousedown', fecharMenu);
+    document.addEventListener("mousedown", fecharMenu);
+    return () => document.removeEventListener("mousedown", fecharMenu);
   }, []);
 
   async function buscarDadosGlobais() {
     setLoading(true);
     try {
-      const { data: dataNotas } = await supabase.from('empresa_notas_fiscais').select('*');
+      const { data: dataNotas } = await supabase
+        .from("empresa_notas_fiscais")
+        .select("*");
       if (dataNotas) setNotas(dataNotas);
-      const { data: dataDespesas } = await supabase.from('empresa_despesas').select('*');
+      const { data: dataDespesas } = await supabase
+        .from("empresa_despesas")
+        .select("*");
       if (dataDespesas) setDespesas(dataDespesas);
     } catch (error) {
-      console.error('Erro ao consolidar painel geral:', error);
+      console.error("Erro ao consolidar painel geral:", error);
     } finally {
       setLoading(false);
     }
   }
 
-  const totalFaturamento = notas.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
+  const totalFaturamento = notas.reduce(
+    (acc, curr) => acc + (Number(curr.valor) || 0),
+    0,
+  );
   const totalImpostos = totalFaturamento * 0.06;
   const totalCustos = despesas.reduce((acc, curr) => {
     const v = Number(curr.valor) || 0;
-    return curr.periodicidade === 'Anual' ? acc + (v / 12) : acc + v;
+    return curr.periodicidade === "Anual" ? acc + v / 12 : acc + v;
   }, 0);
   const lucroConsolidado = totalFaturamento - totalImpostos - totalCustos;
 
   const navItems = [
-    { id: 'geral', label: 'Painel Geral', icon: <LayoutDashboard size={14} /> },
-    { id: 'empresa', label: 'Empresa', icon: <Building2 size={14} /> },
-    { id: 'imoveis', label: 'Imóveis', icon: <Home size={14} /> },
-    { id: 'pessoal', label: 'Pessoal', icon: <User size={14} /> },
+    { id: "geral", label: "Painel Geral", icon: <LayoutDashboard size={14} /> },
+    { id: "empresa", label: "Empresa", icon: <Building2 size={14} /> },
+    { id: "imoveis", label: "Imóveis", icon: <Home size={14} /> },
+    { id: "pessoal", label: "Pessoal", icon: <User size={14} /> },
   ];
 
   const subItensInvestimento = [
-    { id: 'acoes', label: 'Ações', icon: <PieChart size={13} /> },
-    { id: 'consorcios', label: 'Consórcio', icon: <FileText size={13} /> },
-    { id: 'caixinhas', label: 'Caixinhas', icon: <PiggyBank size={13} /> },
+    { id: "acoes", label: "Ações", icon: <PieChart size={13} /> },
+    { id: "consorcios", label: "Consórcio", icon: <FileText size={13} /> },
+    { id: "caixinhas", label: "Caixinhas", icon: <PiggyBank size={13} /> },
   ];
 
   function selecionarSubAba(sub: string) {
     setSubAbaInvestimento(sub);
-    setAbaAtiva('investimentos');
+    setAbaAtiva("investimentos");
     setMenuInvestimentosAberto(false);
   }
 
@@ -85,57 +109,117 @@ export default function App() {
           <LayoutDashboard size={24} />
         </div>
         <div>
-          <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Painel Geral</h2>
-          <p className="text-slate-500 text-sm font-medium">Consolidado de faturamento, fluxo de caixa corporativo e despesas de 2026</p>
+          <h2 className="text-3xl font-bold text-slate-800 tracking-tight">
+            Painel Geral
+          </h2>
+          <p className="text-slate-500 text-sm font-medium">
+            Consolidado de faturamento, fluxo de caixa corporativo e despesas de
+            2026
+          </p>
         </div>
       </div>
 
-      {loading && <p className="text-xs font-bold text-indigo-600 animate-pulse">Atualizando fluxos consolidados...</p>}
+      {loading && (
+        <p className="text-xs font-bold text-indigo-600 animate-pulse">
+          Atualizando fluxos consolidados...
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
           <div className="space-y-2">
-            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Faturamento Bruto</span>
-            <h3 className="text-2xl font-black text-slate-800">R$ {totalFaturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-            <span className="text-[10px] text-emerald-600 font-bold">Entradas Ativas</span>
+            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">
+              Faturamento Bruto
+            </span>
+            <h3 className="text-2xl font-black text-slate-800">
+              R${" "}
+              {totalFaturamento.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+              })}
+            </h3>
+            <span className="text-[10px] text-emerald-600 font-bold">
+              Entradas Ativas
+            </span>
           </div>
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><ArrowUpRight size={20} /></div>
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+            <ArrowUpRight size={20} />
+          </div>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
           <div className="space-y-2">
-            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Custos Operacionais</span>
-            <h3 className="text-2xl font-black text-slate-800">R$ {totalCustos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-            <span className="text-[10px] text-slate-500 font-medium">Mensais + Rateios Anuais</span>
+            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">
+              Custos Operacionais
+            </span>
+            <h3 className="text-2xl font-black text-slate-800">
+              R${" "}
+              {totalCustos.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+              })}
+            </h3>
+            <span className="text-[10px] text-slate-500 font-medium">
+              Mensais + Rateios Anuais
+            </span>
           </div>
-          <div className="p-3 bg-rose-50 text-rose-600 rounded-xl"><DollarSign size={20} /></div>
+          <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
+            <DollarSign size={20} />
+          </div>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
           <div className="space-y-2">
-            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Provisão de Impostos</span>
-            <h3 className="text-2xl font-black text-slate-800">R$ {totalImpostos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-            <span className="text-[10px] text-amber-600 font-bold">Simples Nacional (6%)</span>
+            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">
+              Provisão de Impostos
+            </span>
+            <h3 className="text-2xl font-black text-slate-800">
+              R${" "}
+              {totalImpostos.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+              })}
+            </h3>
+            <span className="text-[10px] text-amber-600 font-bold">
+              Simples Nacional (6%)
+            </span>
           </div>
-          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><Percent size={18} /></div>
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+            <Percent size={18} />
+          </div>
         </div>
 
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-2xl text-white shadow-sm flex items-center justify-between">
           <div className="space-y-2">
-            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Lucro Líquido Real</span>
-            <h3 className="text-2xl font-black text-emerald-400">R$ {lucroConsolidado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-            <span className="text-[10px] text-slate-300 font-medium">Faturamento disponível líquido</span>
+            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">
+              Lucro Líquido Real
+            </span>
+            <h3 className="text-2xl font-black text-emerald-400">
+              R${" "}
+              {lucroConsolidado.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+              })}
+            </h3>
+            <span className="text-[10px] text-slate-300 font-medium">
+              Faturamento disponível líquido
+            </span>
           </div>
-          <div className="p-3 bg-white/10 text-emerald-400 rounded-xl"><TrendingUp size={20} /></div>
+          <div className="p-3 bg-white/10 text-emerald-400 rounded-xl">
+            <TrendingUp size={20} />
+          </div>
         </div>
       </div>
 
       <div className="p-6 bg-blue-50/40 rounded-2xl border border-blue-100/60 flex gap-4 items-start">
-        <div className="p-2 bg-blue-600 text-white rounded-lg mt-0.5"><TrendingUp size={16} /></div>
+        <div className="p-2 bg-blue-600 text-white rounded-lg mt-0.5">
+          <TrendingUp size={16} />
+        </div>
         <div className="space-y-1">
-          <h4 className="text-sm font-bold text-blue-900">Análise de Performance Operacional</h4>
+          <h4 className="text-sm font-bold text-blue-900">
+            Análise de Performance Operacional
+          </h4>
           <p className="text-xs text-blue-700 leading-relaxed font-medium">
-            Este painel consolida em tempo real todas as Notas Fiscais emitidas e subtrai os custos cadastrados na aba da Empresa, aplicando o desconto proporcional de impostos. Use este fluxo para monitorar a saúde financeira geral da sua operação.
+            Este painel consolida em tempo real todas as Notas Fiscais emitidas
+            e subtrai os custos cadastrados na aba da Empresa, aplicando o
+            desconto proporcional de impostos. Use este fluxo para monitorar a
+            saúde financeira geral da sua operação.
           </p>
         </div>
       </div>
@@ -152,14 +236,14 @@ export default function App() {
             </span>
 
             <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/40">
-              {navItems.map(item => (
+              {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setAbaAtiva(item.id)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
                     abaAtiva === item.id
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
                   {item.icon} {item.label}
@@ -168,28 +252,32 @@ export default function App() {
 
               <div id="menu-investimentos" className="relative">
                 <button
-                  onClick={() => setMenuInvestimentosAberto(v => !v)}
+                  onClick={() => setMenuInvestimentosAberto((v) => !v)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                    abaAtiva === 'investimentos'
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
+                    abaAtiva === "investimentos"
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
                   <Wallet size={14} />
                   Investimentos
-                  <ChevronDown size={12} className={`transition-transform ${menuInvestimentosAberto ? 'rotate-180' : ''}`} />
+                  <ChevronDown
+                    size={12}
+                    className={`transition-transform ${menuInvestimentosAberto ? "rotate-180" : ""}`}
+                  />
                 </button>
 
                 {menuInvestimentosAberto && (
                   <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 min-w-[150px] z-50">
-                    {subItensInvestimento.map(sub => (
+                    {subItensInvestimento.map((sub) => (
                       <button
                         key={sub.id}
                         onClick={() => selecionarSubAba(sub.id)}
                         className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition-colors text-left ${
-                          abaAtiva === 'investimentos' && subAbaInvestimento === sub.id
-                            ? 'text-blue-600 bg-blue-50'
-                            : 'text-slate-600 hover:bg-slate-50'
+                          abaAtiva === "investimentos" &&
+                          subAbaInvestimento === sub.id
+                            ? "text-blue-600 bg-blue-50"
+                            : "text-slate-600 hover:bg-slate-50"
                         }`}
                       >
                         {sub.icon} {sub.label}
@@ -201,16 +289,16 @@ export default function App() {
             </nav>
           </div>
 
-          {abaAtiva === 'investimentos' && (
+          {abaAtiva === "investimentos" && (
             <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
-              {subItensInvestimento.map(sub => (
+              {subItensInvestimento.map((sub) => (
                 <button
                   key={sub.id}
                   onClick={() => setSubAbaInvestimento(sub.id)}
                   className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
                     subAbaInvestimento === sub.id
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'text-slate-400 hover:text-slate-600'
+                      ? "bg-indigo-100 text-indigo-700"
+                      : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
                   {sub.icon} {sub.label}
@@ -221,13 +309,17 @@ export default function App() {
         </header>
 
         <main>
-          {abaAtiva === 'geral' && <PainelGeral />}
-          {abaAtiva === 'empresa' && <ControleEmpresa />}
-          {abaAtiva === 'pessoal' && <SaidasPainel />}
-          {abaAtiva === 'imoveis' && <DashboardImovel />}
-          {abaAtiva === 'investimentos' && subAbaInvestimento === 'acoes' && <CarteiraInvestimentos />}
-          {abaAtiva === 'investimentos' && subAbaInvestimento === 'consorcios' && <Consorcios />}
-          {abaAtiva === 'investimentos' && subAbaInvestimento === 'caixinhas' && <Caixinhas />}
+          {abaAtiva === "geral" && <PainelGeral />}
+          {abaAtiva === "empresa" && <ControleEmpresa />}
+          {abaAtiva === "pessoal" && <SaidasPainel />}
+          {abaAtiva === "imoveis" && <CasaJardimMirante />}
+          {abaAtiva === "investimentos" && subAbaInvestimento === "acoes" && (
+            <CarteiraInvestimentos />
+          )}
+          {abaAtiva === "investimentos" &&
+            subAbaInvestimento === "consorcios" && <Consorcios />}
+          {abaAtiva === "investimentos" &&
+            subAbaInvestimento === "caixinhas" && <Caixinhas />}
         </main>
       </div>
     </PasswordGate>
