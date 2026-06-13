@@ -231,11 +231,7 @@ export default function EntradasPessoais() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo</label>
-                  <select value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-emerald-400 text-slate-700">
-                    <option value="PRO_LABORE">Pró-labore</option>
-                    <option value="DIVIDENDOS">Dividendos</option>
-                    <option value="OUTROS">Outros</option>
-                  </select>
+                  <input type="text" placeholder="Ex: Pró-labore, Dividendos..." value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-emerald-400 focus:bg-white transition-all text-slate-700"/>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data *</label>
