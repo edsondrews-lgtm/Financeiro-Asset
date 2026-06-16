@@ -3,7 +3,7 @@ import { supabase } from "./lib/supabaseClient";
 import ControleEmpresa from "./views/ControleEmpresa";
 import SaidasPainel from "./views/SaidasPainel";
 import EntradasPessoais from "./views/EntradasPessoais";
-import DashboardImovel from "./components/DashboardImovel";
+import Apartamento from "./views/Apartamento";
 import PasswordGate from "./components/PasswordGate";
 import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
 import Consorcios from "./views/Consorcios";
@@ -41,6 +41,9 @@ export default function App() {
   const [caixinhas, setCaixinhas] = useState<any[]>([]);
   const [consorcios, setConsorcios] = useState<any[]>([]);
   const [proximaParcela, setProximaParcela] = useState<any | null>(null);
+  // Imóvel
+  const [imovelPago, setImovelPago] = useState(0);
+  const [proximaParcelaImovel, setProximaParcelaImovel] = useState<{ valor: number; dias: number } | null>(null);
 
   useEffect(() => { buscarTodos(); }, []);
 
@@ -57,7 +60,7 @@ export default function App() {
   async function buscarTodos() {
     setLoading(true);
     try {
-      const [rNotas, rDespesas, rEntradas, rSaidas, rCaixinhas, rConsorcios, rParcela] = await Promise.all([
+      const [rNotas, rDespesas, rEntradas, rSaidas, rCaixinhas, rConsorcios, rParcela, rCub, rParcelasImovel, rReforcos] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
         supabase.from("entradas_pessoais").select("valor,data_entrada,tipo,descricao"),
@@ -65,6 +68,9 @@ export default function App() {
         supabase.from("caixinhas").select("valor_atual,nome,meta"),
         supabase.from("consorcios").select("valor_bem,descricao"),
         supabase.from("parcelas_calculadas").select("valor_total,data_vencimento").eq("status","pendente").order("data_vencimento",{ascending:true}).limit(1),
+        supabase.from("imovel_cub").select("valor_cub").order("data_registro", { ascending: false }).limit(1),
+        supabase.from("imovel_parcelas").select("numero_parcela,valor_pago,adiantada"),
+        supabase.from("imovel_reforcos").select("valor_reais"),
       ]);
       if (rNotas.data)      setNotas(rNotas.data);
       if (rDespesas.data)   setDespesas(rDespesas.data);
@@ -73,6 +79,28 @@ export default function App() {
       if (rCaixinhas.data)  setCaixinhas(rCaixinhas.data);
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
+
+      // Calcula total pago do imóvel dinamicamente
+      const totalParc = (rParcelasImovel.data || []).reduce((s: number, p: any) => s + (Number(p.valor_pago) || 0), 0);
+      const totalRef  = (rReforcos.data || []).reduce((s: number, r: any) => s + (Number(r.valor_reais) || 0), 0);
+      setImovelPago(totalParc + totalRef);
+
+      // Próxima parcela do imóvel
+      if (rCub.data && rCub.data[0]) {
+        const cubAtual = Number(rCub.data[0].valor_cub);
+        const CUBS_PARCELA = 0.8582;
+        const valorProxima = parseFloat((CUBS_PARCELA * cubAtual).toFixed(2));
+        const parcelasNormais = (rParcelasImovel.data || []).filter((p: any) => !p.adiantada);
+        const proximaNum = parcelasNormais.length > 0
+          ? Math.max(...parcelasNormais.map((p: any) => p.numero_parcela)) + 1
+          : 1;
+        const dataInicio = new Date("2022-12-10T12:00:00");
+        dataInicio.setMonth(dataInicio.getMonth() + proximaNum - 1);
+        const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
+        const dias = Math.ceil((dataInicio.getTime() - hoje2.getTime()) / 86400000);
+        setProximaParcelaImovel({ valor: valorProxima, dias });
+      }
+
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -102,13 +130,12 @@ export default function App() {
   // ── Patrimônio ─────────────────────────────────────────────────────────────
   const totalCaixinhas = caixinhas.reduce((s, c) => s + (Number(c.valor_atual) || 0), 0);
   const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem) || 0), 0);
-  const IMOVEL_PAGO = 211232.27;
-  const patrimonioTotal = IMOVEL_PAGO + totalCaixinhas + totalConsorcios;
+  const patrimonioTotal = imovelPago + totalCaixinhas + totalConsorcios;
 
-  // ── Faturamento anual consolidado (para o resumo) ─────────────────────────
-  const faturamentoAno = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor) || 0), 0);
+  // ── Faturamento anual consolidado ─────────────────────────────────────────
+  const faturamentoAno = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
-  // ── Próxima parcela ────────────────────────────────────────────────────────
+  // ── Próxima parcela consórcio ──────────────────────────────────────────────
   const diasParaParcela = proximaParcela?.data_vencimento ? (() => {
     const [y,m,d] = proximaParcela.data_vencimento.split("-").map(Number);
     const alvo = new Date(y, m - 1, d);
@@ -190,7 +217,7 @@ export default function App() {
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
               {[
-                { label: "Imóvel",    valor: IMOVEL_PAGO,      icon: <Home size={14}/>,      cor: "text-cyan-400",   nota: "pago até hoje" },
+                { label: "Imóvel",    valor: imovelPago,       icon: <Home size={14}/>,      cor: "text-cyan-400",   nota: "pago até hoje" },
                 { label: "Caixinhas", valor: totalCaixinhas,   icon: <PiggyBank size={14}/>, cor: "text-emerald-400",nota: `${caixinhas.length} cofrinhos` },
                 { label: "Consórcio", valor: totalConsorcios,  icon: <Shield size={14}/>,    cor: "text-violet-400", nota: "crédito total" },
                 { label: "Ações",     valor: 0,                icon: <PieChart size={14}/>,  cor: "text-slate-500",  nota: "não cadastrado" },
@@ -319,44 +346,46 @@ export default function App() {
             </div>
           </div>
 
-          {/* Consórcio + Imóvel */}
+          {/* Imóvel — agora dinâmico */}
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-violet-50 rounded-lg"><Shield size={14} className="text-violet-600"/></div>
+                <div className="p-1.5 bg-cyan-50 rounded-lg"><Home size={14} className="text-cyan-600"/></div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Compromissos</p>
               </div>
-              <button onClick={() => { setSubAbaInvestimento("consorcios"); setAbaAtiva("investimentos"); }} className="text-[10px] font-bold text-violet-500 hover:text-violet-700 flex items-center gap-1">
+              <button onClick={() => setAbaAtiva("imoveis")} className="text-[10px] font-bold text-cyan-500 hover:text-cyan-700 flex items-center gap-1">
                 Ver <ArrowRight size={10}/>
               </button>
             </div>
 
-            {/* Imóvel */}
+            {/* Financiamento Imobiliário */}
             <div className="mb-4 p-3 bg-cyan-50 rounded-xl">
-              <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider mb-1.5 flex items-center gap-1"><Home size={10}/> Financiamento Imobiliário</p>
+              <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                <Home size={10}/> Financiamento Imobiliário
+              </p>
               <div className="w-full bg-white rounded-full h-2 mb-1.5">
-                <div className="h-full bg-cyan-500 rounded-full" style={{ width: "48.7%" }}/>
+                <div className="h-full bg-cyan-500 rounded-full" style={{ width: `${Math.min(100, (imovelPago / 433000) * 100).toFixed(1)}%` }}/>
               </div>
               <div className="flex justify-between text-[10px] font-semibold">
-                <span className="text-cyan-700">48.7% pago · {fmt(IMOVEL_PAGO)}</span>
+                <span className="text-cyan-700">{fmt(imovelPago)} pago</span>
                 <span className="text-cyan-400">18 meses</span>
               </div>
             </div>
 
-            {/* Próxima parcela */}
-            {proximaParcela ? (
-              <div className="p-3 bg-violet-50 rounded-xl">
-                <p className="text-[10px] font-black text-violet-700 uppercase tracking-wider mb-1.5 flex items-center gap-1"><FileText size={10}/> Próxima Parcela</p>
-                <p className="text-base font-black text-violet-800 tabular-nums">{fmt(proximaParcela.valor_total)}</p>
-                {diasParaParcela !== null && (
-                  <p className={`text-[10px] font-bold mt-1 ${diasParaParcela <= 7 ? "text-rose-600" : "text-violet-500"}`}>
-                    {diasParaParcela <= 0 ? "Vencida!" : `em ${diasParaParcela} dia${diasParaParcela !== 1 ? "s" : ""}`}
-                  </p>
-                )}
+            {/* Próxima parcela imóvel */}
+            {proximaParcelaImovel ? (
+              <div className="p-3 bg-indigo-50 rounded-xl">
+                <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <FileText size={10}/> Próxima Parcela
+                </p>
+                <p className="text-base font-black text-indigo-800 tabular-nums">{fmt(proximaParcelaImovel.valor)}</p>
+                <p className={`text-[10px] font-bold mt-1 ${proximaParcelaImovel.dias <= 7 ? "text-rose-600" : "text-indigo-500"}`}>
+                  {proximaParcelaImovel.dias <= 0 ? "Vencida!" : `em ${proximaParcelaImovel.dias} dia${proximaParcelaImovel.dias !== 1 ? "s" : ""}`}
+                </p>
               </div>
             ) : (
               <div className="p-3 bg-slate-50 rounded-xl">
-                <p className="text-[10px] text-slate-400 font-semibold">Nenhuma parcela pendente cadastrada</p>
+                <p className="text-[10px] text-slate-400 font-semibold">Registre parcelas no módulo Imóveis</p>
               </div>
             )}
           </div>
@@ -518,7 +547,7 @@ export default function App() {
         <main>
           {abaAtiva === "geral"    && <PainelGeral />}
           {abaAtiva === "empresa"  && <ControleEmpresa />}
-          {abaAtiva === "imoveis"  && <DashboardImovel />}
+          {abaAtiva === "imoveis"  && <Apartamento />}
           {abaAtiva === "pessoal"  && subAbaPessoal === "entradas" && <EntradasPessoais />}
           {abaAtiva === "pessoal"  && subAbaPessoal === "saidas"   && <SaidasPainel />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"      && <CarteiraInvestimentos />}
