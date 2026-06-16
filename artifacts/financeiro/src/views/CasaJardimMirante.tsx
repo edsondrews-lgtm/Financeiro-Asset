@@ -1,732 +1,489 @@
-import React, { useState, useEffect } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../lib/supabaseClient'
 import {
-  Home,
-  TrendingUp,
-  Target,
-  Wallet,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Pencil,
-  Trash2,
-  X,
-  ChevronDown,
-  ArrowRight,
-  Sparkles,
-} from "lucide-react";
+  Home, Plus, X, Trash2, Edit2, Check,
+  TrendingUp, Calendar, RefreshCw, ChevronDown, ChevronUp,
+  DollarSign, BarChart3, Target, ArrowRight,
+} from 'lucide-react'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface Imovel {
-  id: string;
-  nome: string;
-  descricao: string;
-  valor_total: number;
-  fgts_reservado: number;
-  total_transacoes: number;
-  total_investido: number;
-  total_entradas: number;
-  total_antecipacoes: number;
-  total_fgts: number;
-  restante: number;
-  progresso_pct: number;
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
+interface Casa {
+  id: string
+  nome: string
+  endereco: string
+  tipo: string
+  valor_total: number
+  total_pago: number
+  valor_restante: number
+  total_aportes: number
+  progresso_pct: number
 }
 
-interface Transacao {
-  id: string;
-  imovel_id: string;
-  data_transacao: string;
-  tipo: "entrada" | "antecipacao" | "fgts";
-  valor: number;
-  origem: string | null;
-  destino: string | null;
-  detalhes: string | null;
+interface Aporte {
+  id: string
+  data_pagamento: string
+  valor: number
+  quem_pagou: string
+  destinatario: string
+  tipo: string
+  observacao: string | null
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const fmtBRL = (v: number) =>
-  v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmtDate = (s: string) =>
-  new Date(s).toLocaleDateString("pt-BR", {
-    timeZone: "UTC",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+const fmt = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const TIPO_CFG = {
-  entrada: {
-    label: "Entrada",
-    dot: "#10B981",
-    bg: "bg-emerald-50",
-    text: "text-emerald-700",
-    bar: "#10B981",
-  },
-  antecipacao: {
-    label: "Antecipação",
-    dot: "#F59E0B",
-    bg: "bg-amber-50",
-    text: "text-amber-700",
-    bar: "#F59E0B",
-  },
-  fgts: {
-    label: "FGTS",
-    dot: "#6366F1",
-    bg: "bg-violet-50",
-    text: "text-violet-700",
-    bar: "#6366F1",
-  },
-};
+const fmtDate = (d: string) =>
+  new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 
-const inputCls =
-  "w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 hover:border-slate-300 transition-colors";
+const TIPOS = [
+  { value: 'entrada',      label: '💎 Entrada',      color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'aporte',       label: '⚡ Aporte',       color: 'bg-amber-100 text-amber-700' },
+  { value: 'antecipacao',  label: '🔁 Antecipação',  color: 'bg-blue-100 text-blue-700' },
+]
 
-function Field({
-  label,
-  children,
+function TipoBadge({ tipo }: { tipo: string }) {
+  const t = TIPOS.find(t => t.value === tipo) ?? TIPOS[1]
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${t.color}`}>
+      {t.label}
+    </span>
+  )
+}
+
+// ─── Modal: Novo / Editar Aporte ──────────────────────────────────────────────
+
+function ModalAporte({
+  aporte, onFechar, onSalvo,
 }: {
-  label: string;
-  children: React.ReactNode;
+  aporte?: Aporte
+  onFechar: () => void
+  onSalvo: () => void
 }) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-// ── Progress ring ─────────────────────────────────────────────────────────────
-function ProgressRing({ pct }: { pct: number }) {
-  const r = 54;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (Math.min(pct, 100) / 100) * circ;
-  return (
-    <svg width="128" height="128" viewBox="0 0 128 128">
-      <circle
-        cx="64"
-        cy="64"
-        r={r}
-        fill="none"
-        stroke="#F1F5F9"
-        strokeWidth="10"
-      />
-      <circle
-        cx="64"
-        cy="64"
-        r={r}
-        fill="none"
-        stroke="url(#prog)"
-        strokeWidth="10"
-        strokeLinecap="round"
-        strokeDasharray={circ}
-        strokeDashoffset={offset}
-        transform="rotate(-90 64 64)"
-        style={{ transition: "stroke-dashoffset 1s ease" }}
-      />
-      <defs>
-        <linearGradient id="prog" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#7C3AED" />
-          <stop offset="100%" stopColor="#10B981" />
-        </linearGradient>
-      </defs>
-      <text
-        x="64"
-        y="58"
-        textAnchor="middle"
-        fontSize="20"
-        fontWeight="800"
-        fill="#1E293B"
-        fontFamily="inherit"
-      >
-        {pct.toFixed(1)}%
-      </text>
-      <text
-        x="64"
-        y="74"
-        textAnchor="middle"
-        fontSize="9"
-        fill="#94A3B8"
-        fontFamily="inherit"
-        fontWeight="600"
-        letterSpacing="1"
-      >
-        CONQUISTADO
-      </text>
-    </svg>
-  );
-}
-
-// ── Main component ─────────────────────────────────────────────────────────────
-export default function CasaJardimMirante() {
-  const [imovel, setImovel] = useState<Imovel | null>(null);
-  const [transacoes, setTransacoes] = useState<Transacao[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [aba, setAba] = useState<"resumo" | "cronologia">("resumo");
-
-  // modals
-  const [modalTransacao, setModalTransacao] = useState(false);
-  const [editando, setEditando] = useState<Transacao | null>(null);
   const [form, setForm] = useState({
-    data_transacao: new Date().toISOString().split("T")[0],
-    tipo: "entrada" as Transacao["tipo"],
-    valor: "",
-    origem: "",
-    destino: "",
-    detalhes: "",
-  });
-
-  useEffect(() => {
-    carregar();
-  }, []);
-
-  async function carregar() {
-    setLoading(true);
-    try {
-      const { data: resumo } = await supabase
-        .from("v_casa_resumo")
-        .select("*")
-        .single();
-      if (resumo) setImovel(resumo as Imovel);
-
-      const { data: trans } = await supabase
-        .from("pessoal_casa_transacoes")
-        .select("*")
-        .order("data_transacao", { ascending: false });
-      if (trans) setTransacoes(trans as Transacao[]);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }
+    data_pagamento: aporte?.data_pagamento ?? new Date().toISOString().split('T')[0],
+    valor: aporte?.valor.toString() ?? '',
+    quem_pagou: aporte?.quem_pagou ?? '',
+    destinatario: aporte?.destinatario ?? 'Rudimar Vivian',
+    tipo: aporte?.tipo ?? 'aporte',
+    observacao: aporte?.observacao ?? '',
+  })
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
 
   async function salvar(e: React.FormEvent) {
-    e.preventDefault();
-    const dados = {
-      imovel_id: imovel?.id,
-      data_transacao: form.data_transacao,
+    e.preventDefault()
+    const valor = parseFloat(form.valor)
+    if (isNaN(valor) || valor <= 0) { setErro('Valor inválido.'); return }
+    if (!form.quem_pagou) { setErro('Informe quem pagou.'); return }
+    setSalvando(true); setErro(null)
+
+    const payload = {
+      data_pagamento: form.data_pagamento,
+      valor,
+      quem_pagou: form.quem_pagou,
+      destinatario: form.destinatario,
       tipo: form.tipo,
-      valor: Number(form.valor) || 0,
-      origem: form.origem || null,
-      destino: form.destino || null,
-      detalhes: form.detalhes || null,
-    };
-    if (editando) {
-      await supabase
-        .from("pessoal_casa_transacoes")
-        .update(dados)
-        .eq("id", editando.id);
-    } else {
-      await supabase.from("pessoal_casa_transacoes").insert([dados]);
+      observacao: form.observacao || null,
     }
-    fechar();
-    carregar();
-  }
 
-  async function deletar(id: string) {
-    if (!window.confirm("Excluir esta transação?")) return;
-    await supabase.from("pessoal_casa_transacoes").delete().eq("id", id);
-    carregar();
-  }
+    const { error } = aporte
+      ? await supabase.from('casa_aportes').update(payload).eq('id', aporte.id)
+      : await supabase.from('casa_aportes').insert(payload)
 
-  function abrirEdicao(t: Transacao) {
-    setEditando(t);
-    setForm({
-      data_transacao: t.data_transacao,
-      tipo: t.tipo,
-      valor: String(t.valor),
-      origem: t.origem ?? "",
-      destino: t.destino ?? "",
-      detalhes: t.detalhes ?? "",
-    });
-    setModalTransacao(true);
+    setSalvando(false)
+    if (error) { setErro('Erro: ' + error.message); return }
+    onSalvo()
   }
-
-  function fechar() {
-    setModalTransacao(false);
-    setEditando(null);
-    setForm({
-      data_transacao: new Date().toISOString().split("T")[0],
-      tipo: "entrada",
-      valor: "",
-      origem: "",
-      destino: "",
-      detalhes: "",
-    });
-  }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-          Carregando conquista...
-        </div>
-      </div>
-    );
-  }
-
-  const pct = imovel?.progresso_pct ?? 0;
-  const restante = imovel?.restante ?? 0;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
-        {/* ── HERO ────────────────────────────────────────────────────────── */}
-        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-violet-950 to-slate-900 p-8 md:p-10">
-          {/* Subtle grid texture */}
-          <div
-            className="absolute inset-0 opacity-[0.04]"
-            style={{
-              backgroundImage:
-                "linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)",
-              backgroundSize: "32px 32px",
-            }}
-          />
-
-          <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-8">
-            {/* Left: title + stats */}
-            <div className="space-y-4 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-white/60">
-                  <Home size={11} /> Imóvel
-                </span>
-                {pct >= 100 && (
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
-                    <Sparkles size={10} /> Conquistado
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-none">
-                  {imovel?.nome ?? "Casa Jardim Mirante"}
-                </h1>
-                <p className="text-sm text-white/40 font-medium mt-1">
-                  {imovel?.descricao ?? "Uma conquista extraordinária"}
-                </p>
-              </div>
-
-              {/* Key numbers row */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-2">
-                {[
-                  {
-                    label: "Valor do imóvel",
-                    val: fmtBRL(imovel?.valor_total ?? 0),
-                    color: "text-white",
-                  },
-                  {
-                    label: "Já investido",
-                    val: fmtBRL(imovel?.total_investido ?? 0),
-                    color: "text-emerald-300",
-                  },
-                  {
-                    label: "Ainda faltam",
-                    val: fmtBRL(restante > 0 ? restante : 0),
-                    color: restante > 0 ? "text-amber-300" : "text-emerald-300",
-                  },
-                ].map(({ label, val, color }) => (
-                  <div
-                    key={label}
-                    className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3"
-                  >
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-1">
-                      {label}
-                    </p>
-                    <p className={`text-lg font-black ${color} leading-none`}>
-                      R$ {val}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Progress bar */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[10px] font-bold text-white/40 uppercase tracking-wider">
-                  <span>Progresso</span>
-                  <span>{pct.toFixed(1)}%</span>
-                </div>
-                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-2 rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${Math.min(pct, 100)}%`,
-                      background: "linear-gradient(90deg, #7C3AED, #10B981)",
-                    }}
-                  />
-                </div>
-                <p className="text-[10px] text-white/30 font-medium">
-                  {imovel?.total_transacoes ?? 0} transações registradas · FGTS
-                  reservado R$ {fmtBRL(imovel?.fgts_reservado ?? 0)}
-                </p>
-              </div>
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+              {aporte ? <Edit2 size={18} /> : <Plus size={18} />}
             </div>
+            <h3 className="text-sm font-bold text-slate-800">
+              {aporte ? 'Editar Aporte' : 'Novo Aporte'}
+            </h3>
+          </div>
+          <button onClick={onFechar} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16} /></button>
+        </div>
 
-            {/* Right: ring */}
-            <div className="flex-shrink-0 flex items-center justify-center">
-              <ProgressRing pct={pct} />
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+
+        <form onSubmit={salvar} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data *</label>
+              <input type="date" value={form.data_pagamento} onChange={e => setForm({ ...form, data_pagamento: e.target.value })} required
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor R$ *</label>
+              <input type="number" value={form.valor} onChange={e => setForm({ ...form, valor: e.target.value })}
+                step="0.01" placeholder="0,00" required autoFocus
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400" />
             </div>
           </div>
-        </div>
 
-        {/* ── COMPOSIÇÃO ──────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            {
-              label: "Entradas estratégicas",
-              val: imovel?.total_entradas ?? 0,
-              icon: TrendingUp,
-              color: "text-emerald-600",
-              bg: "bg-emerald-50",
-              border: "border-emerald-100",
-              dot: "#10B981",
-            },
-            {
-              label: "Antecipações",
-              val: imovel?.total_antecipacoes ?? 0,
-              icon: Target,
-              color: "text-amber-600",
-              bg: "bg-amber-50",
-              border: "border-amber-100",
-              dot: "#F59E0B",
-            },
-            {
-              label: "FGTS reservado",
-              val: imovel?.fgts_reservado ?? 0,
-              icon: Wallet,
-              color: "text-violet-600",
-              bg: "bg-violet-50",
-              border: "border-violet-100",
-              dot: "#7C3AED",
-            },
-          ].map(({ label, val, icon: Icon, color, bg, border, dot }) => (
-            <div
-              key={label}
-              className={`bg-white rounded-2xl border ${border} p-5 flex flex-col gap-3`}
-            >
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-7 h-7 rounded-lg ${bg} flex items-center justify-center`}
-                >
-                  <Icon size={14} className={color} />
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {label}
-                </span>
-              </div>
-              <p className="text-2xl font-black text-slate-800 leading-none">
-                R$ {fmtBRL(val)}
-              </p>
-              <div className="w-full h-1 bg-slate-100 rounded-full">
-                <div
-                  className="h-1 rounded-full"
-                  style={{
-                    width: `${(val / (imovel?.valor_total || 1)) * 100}%`,
-                    background: dot,
-                  }}
-                />
-              </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Tipo</label>
+            <div className="grid grid-cols-3 gap-2">
+              {TIPOS.map(t => (
+                <button key={t.value} type="button" onClick={() => setForm({ ...form, tipo: t.value })}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${form.tipo === t.value ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-400 hover:border-slate-300'}`}>
+                  {t.label}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Quem Pagou *</label>
+            <input type="text" value={form.quem_pagou} onChange={e => setForm({ ...form, quem_pagou: e.target.value })}
+              placeholder="Ex: Edson Drews" required
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Destinatário *</label>
+            <input type="text" value={form.destinatario} onChange={e => setForm({ ...form, destinatario: e.target.value })}
+              placeholder="Ex: Rudimar Vivian" required
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Observação</label>
+            <textarea value={form.observacao} onChange={e => setForm({ ...form, observacao: e.target.value })}
+              rows={2} placeholder="Ex: Terreno - Tigrinhos"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 resize-none" />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-1">
+            <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+            <button type="submit" disabled={salvando}
+              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+              <Check size={13} /> {salvando ? 'Salvando...' : 'Confirmar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal: Editar Valor Total ─────────────────────────────────────────────────
+
+function ModalEditarCasa({ casa, onFechar, onSalvo }: {
+  casa: Casa
+  onFechar: () => void
+  onSalvo: () => void
+}) {
+  const [valorTotal, setValorTotal] = useState(casa.valor_total.toString())
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault()
+    const valor = parseFloat(valorTotal)
+    if (isNaN(valor) || valor <= 0) { setErro('Valor inválido.'); return }
+    setSalvando(true)
+    const { error } = await supabase.from('casa').update({ valor_total: valor }).eq('id', casa.id)
+    setSalvando(false)
+    if (error) { setErro('Erro: ' + error.message); return }
+    onSalvo()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Edit2 size={18} /></div>
+            <h3 className="text-sm font-bold text-slate-800">Editar Valor Total</h3>
+          </div>
+          <button onClick={onFechar} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16} /></button>
+        </div>
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+        <form onSubmit={salvar} className="space-y-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor Total da Casa (R$)</label>
+            <input type="number" value={valorTotal} onChange={e => setValorTotal(e.target.value)}
+              step="0.01" required autoFocus
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400" />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+            <button type="submit" disabled={salvando}
+              className="flex items-center gap-2 px-5 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+              <Check size={13} /> {salvando ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Componente Principal ─────────────────────────────────────────────────────
+
+export default function CasaJardimMirante() {
+  const [casa, setCasa] = useState<Casa | null>(null)
+  const [aportes, setAportes] = useState<Aporte[]>([])
+  const [carregando, setCarregando] = useState(true)
+
+  const [modalAporte, setModalAporte] = useState(false)
+  const [aporteEditando, setAporteEditando] = useState<Aporte | null>(null)
+  const [modalCasa, setModalCasa] = useState(false)
+  const [excluindo, setExcluindo] = useState<string | null>(null)
+
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'entrada' | 'aporte' | 'antecipacao'>('todos')
+  const [paginaAtual, setPaginaAtual] = useState(1)
+  const porPagina = 10
+
+  const carregar = useCallback(async () => {
+    setCarregando(true)
+    const [{ data: casaData }, { data: aportesData }] = await Promise.all([
+      supabase.from('casa_resumo').select('*').single(),
+      supabase.from('casa_aportes').select('*').order('data_pagamento', { ascending: false }),
+    ])
+    if (casaData) setCasa(casaData)
+    setAportes(aportesData || [])
+    setCarregando(false)
+  }, [])
+
+  useEffect(() => { carregar() }, [carregar])
+
+  if (carregando) return (
+    <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
+      <div className="flex items-center gap-2">
+        <RefreshCw size={16} className="animate-spin" /> Carregando...
+      </div>
+    </div>
+  )
+
+  if (!casa) return (
+    <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Nenhuma casa cadastrada.</div>
+  )
+
+  // ── Cálculos ──
+  const totalPorTipo = {
+    entrada:     aportes.filter(a => a.tipo === 'entrada').reduce((s, a) => s + a.valor, 0),
+    aporte:      aportes.filter(a => a.tipo === 'aporte').reduce((s, a) => s + a.valor, 0),
+    antecipacao: aportes.filter(a => a.tipo === 'antecipacao').reduce((s, a) => s + a.valor, 0),
+  }
+
+  const listaFiltrada = filtroTipo === 'todos' ? aportes : aportes.filter(a => a.tipo === filtroTipo)
+  const totalPaginas = Math.ceil(listaFiltrada.length / porPagina)
+  const listaAtual = listaFiltrada.slice((paginaAtual - 1) * porPagina, paginaAtual * porPagina)
+
+  async function excluir(id: string) {
+    if (!confirm('Excluir este aporte?')) return
+    setExcluindo(id)
+    await supabase.from('casa_aportes').delete().eq('id', id)
+    await carregar()
+    setExcluindo(null)
+  }
+
+  const progresso = casa.progresso_pct
+  const quitada = casa.valor_restante <= 0
+
+  return (
+    <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
+
+      {/* ── Header ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-emerald-600 rounded-xl text-white shadow-md shadow-emerald-100">
+            <Home size={24} />
+          </div>
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">Casa Geminada</h2>
+            <p className="text-slate-500 text-sm">{casa.endereco} · {casa.tipo}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => { setAporteEditando(null); setModalAporte(true) }}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold">
+            <Plus size={13} /> Novo Aporte
+          </button>
+          <button onClick={() => setModalCasa(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold">
+            <Edit2 size={13} /> Editar Valor Total
+          </button>
+          <button onClick={() => carregar()}
+            className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-xl">
+            <RefreshCw size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Cards de resumo ── */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+        <div className="bg-slate-800 p-5 rounded-2xl text-white shadow-sm space-y-1">
+          <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Investimento Total</div>
+          <div className="text-2xl font-black">{fmt(casa.valor_total)}</div>
+          <div className="text-xs text-slate-400">Valor da propriedade</div>
         </div>
 
-        {/* ── ABAS ────────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center bg-white border border-slate-200 rounded-full p-0.5">
-            {(["resumo", "cronologia"] as const).map((a) => (
-              <button
-                key={a}
-                onClick={() => setAba(a)}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  aba === a
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {a === "resumo" ? "Resumo" : "Cronologia"}
+        <div className="bg-emerald-600 p-5 rounded-2xl text-white shadow-sm space-y-1">
+          <div className="text-xs text-emerald-200 font-bold uppercase tracking-wider">Já Investido</div>
+          <div className="text-2xl font-black">{fmt(casa.total_pago)}</div>
+          <div className="text-xs text-emerald-200">{casa.total_aportes} transações</div>
+        </div>
+
+        <div className={`p-5 rounded-2xl text-white shadow-sm space-y-1 ${quitada ? 'bg-emerald-500' : 'bg-amber-500'}`}>
+          <div className="text-xs text-white/70 font-bold uppercase tracking-wider">
+            {quitada ? '✓ Quitada!' : 'Restante'}
+          </div>
+          <div className="text-2xl font-black">{quitada ? fmt(0) : fmt(casa.valor_restante)}</div>
+          <div className="text-xs text-white/70">{quitada ? 'Parabéns!' : 'a pagar'}</div>
+        </div>
+
+        <div className="bg-blue-600 p-5 rounded-2xl text-white shadow-sm space-y-1">
+          <div className="text-xs text-blue-200 font-bold uppercase tracking-wider">Progresso</div>
+          <div className="text-2xl font-black">{progresso.toFixed(1)}%</div>
+          <div className="text-xs text-blue-200">{quitada ? 'Meta alcançada 🎉' : 'concluído'}</div>
+        </div>
+      </div>
+
+      {/* ── Barra de progresso ── */}
+      <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Progresso do Pagamento</span>
+          <span className="text-sm font-black text-slate-700">{progresso.toFixed(1)}%</span>
+        </div>
+        <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
+          <div className="h-4 rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.min(100, progresso)}%`,
+              background: quitada
+                ? 'linear-gradient(90deg, #10b981, #059669)'
+                : 'linear-gradient(90deg, #3b82f6, #6366f1)',
+            }} />
+        </div>
+        <div className="flex justify-between text-xs text-slate-400 font-semibold">
+          <span>{fmt(casa.total_pago)} pago</span>
+          {!quitada && <span>Faltam {fmt(casa.valor_restante)}</span>}
+          {quitada && <span className="text-emerald-600 font-black">✓ Totalmente quitada!</span>}
+        </div>
+      </div>
+
+      {/* ── Breakdown por tipo ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {[
+          { tipo: 'entrada',     label: '💎 Entradas',     valor: totalPorTipo.entrada,     cor: 'border-emerald-200 bg-emerald-50', texto: 'text-emerald-700' },
+          { tipo: 'aporte',      label: '⚡ Aportes',      valor: totalPorTipo.aporte,      cor: 'border-amber-200 bg-amber-50',    texto: 'text-amber-700' },
+          { tipo: 'antecipacao', label: '🔁 Antecipações', valor: totalPorTipo.antecipacao, cor: 'border-blue-200 bg-blue-50',      texto: 'text-blue-700' },
+        ].map(item => (
+          <div key={item.tipo} className={`border rounded-2xl p-5 ${item.cor} space-y-1`}>
+            <div className={`text-xs font-bold uppercase tracking-wider ${item.texto}`}>{item.label}</div>
+            <div className={`text-2xl font-black ${item.texto}`}>{fmt(item.valor)}</div>
+            <div className={`text-xs ${item.texto} opacity-70`}>
+              {aportes.filter(a => a.tipo === item.tipo).length} transações
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Tabela de aportes ── */}
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+
+        {/* Header da tabela */}
+        <div className="p-4 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex gap-1.5 flex-wrap">
+            {(['todos', 'entrada', 'aporte', 'antecipacao'] as const).map(f => (
+              <button key={f} onClick={() => { setFiltroTipo(f); setPaginaAtual(1) }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${filtroTipo === f ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                {f === 'todos' ? `Todos (${aportes.length})` :
+                 f === 'entrada' ? `💎 Entradas (${aportes.filter(a => a.tipo === f).length})` :
+                 f === 'aporte' ? `⚡ Aportes (${aportes.filter(a => a.tipo === f).length})` :
+                 `🔁 Antecipações (${aportes.filter(a => a.tipo === f).length})`}
               </button>
             ))}
           </div>
-
-          <button
-            onClick={() => setModalTransacao(true)}
-            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors"
-          >
-            <Plus size={13} /> Nova transação
-          </button>
+          {totalPaginas > 1 && (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <button onClick={() => setPaginaAtual(p => Math.max(1, p - 1))} disabled={paginaAtual === 1}
+                className="p-1 disabled:opacity-30"><ChevronUp size={14} /></button>
+              <span>Pág. {paginaAtual}/{totalPaginas}</span>
+              <button onClick={() => setPaginaAtual(p => Math.min(totalPaginas, p + 1))} disabled={paginaAtual >= totalPaginas}
+                className="p-1 disabled:opacity-30"><ChevronDown size={14} /></button>
+            </div>
+          )}
         </div>
 
-        {/* ── RESUMO ──────────────────────────────────────────────────────── */}
-        {aba === "resumo" && (
-          <div className="bg-white rounded-2xl border border-slate-100 p-6">
-            <p className="text-xs font-bold text-slate-700 mb-1">
-              Últimas transações
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mb-5">
-              {transacoes.length} registros no total
-            </p>
-            <div className="space-y-0 divide-y divide-slate-50">
-              {transacoes.slice(0, 6).map((t) => {
-                const cfg = TIPO_CFG[t.tipo];
-                return (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-3 py-3 group"
-                  >
-                    <div
-                      className={`w-2 h-2 rounded-full shrink-0`}
-                      style={{ background: cfg.dot }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${cfg.bg} ${cfg.text}`}
-                        >
-                          {cfg.label}
-                        </span>
-                        {t.origem && (
-                          <span className="text-[11px] text-slate-500 font-medium truncate flex items-center gap-1">
-                            {t.origem}{" "}
-                            <ArrowRight size={10} className="text-slate-300" />{" "}
-                            {t.destino}
-                          </span>
-                        )}
-                      </div>
-                      {t.detalhes && (
-                        <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
-                          {t.detalhes}
-                        </p>
-                      )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-50">
+                <th className="text-left px-5 py-3">Data</th>
+                <th className="text-left px-4 py-3">Tipo</th>
+                <th className="text-right px-4 py-3">Valor</th>
+                <th className="text-left px-4 py-3">Quem Pagou</th>
+                <th className="text-left px-4 py-3">Destinatário</th>
+                <th className="text-left px-4 py-3">Observação</th>
+                <th className="text-center px-4 py-3">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {listaAtual.map(a => (
+                <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
+                  <td className="px-5 py-3 text-xs font-bold text-slate-600">{fmtDate(a.data_pagamento)}</td>
+                  <td className="px-4 py-3"><TipoBadge tipo={a.tipo} /></td>
+                  <td className="px-4 py-3 text-right font-black text-emerald-600">{fmt(a.valor)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-700 font-semibold">{a.quem_pagou}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{a.destinatario}</td>
+                  <td className="px-4 py-3 text-xs text-slate-400 italic max-w-xs truncate">{a.observacao || '—'}</td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => { setAporteEditando(a); setModalAporte(true) }}
+                        className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors">
+                        <Edit2 size={12} />
+                      </button>
+                      <button onClick={() => excluir(a.id)} disabled={excluindo === a.id}
+                        className="p-1.5 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-30">
+                        <Trash2 size={12} />
+                      </button>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-black text-slate-800">
-                        R$ {fmtBRL(t.valor)}
-                      </p>
-                      <p className="text-[10px] text-slate-400">
-                        {fmtDate(t.data_transacao)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {transacoes.length > 6 && (
-              <button
-                onClick={() => setAba("cronologia")}
-                className="mt-4 w-full text-center text-xs font-bold text-violet-600 hover:text-violet-800 transition-colors"
-              >
-                Ver todas as {transacoes.length} transações →
-              </button>
-            )}
-          </div>
-        )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-200 bg-slate-50">
+              <tr>
+                <td colSpan={2} className="px-5 py-3 text-xs font-bold text-slate-500 uppercase">Total</td>
+                <td className="px-4 py-3 text-right font-black text-emerald-600">{fmt(listaFiltrada.reduce((s, a) => s + a.valor, 0))}</td>
+                <td colSpan={4} />
+              </tr>
+            </tfoot>
+          </table>
 
-        {/* ── CRONOLOGIA ──────────────────────────────────────────────────── */}
-        {aba === "cronologia" && (
-          <div className="bg-white rounded-2xl border border-slate-100 p-6">
-            <p className="text-xs font-bold text-slate-700 mb-1">
-              Cronologia das conquistas
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mb-5">
-              {transacoes.length} transações · ordenadas por data
-            </p>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    {[
-                      "Data",
-                      "Tipo",
-                      "Valor",
-                      "Transação",
-                      "Detalhes",
-                      "Ações",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 pr-4 last:text-right last:pr-0"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {transacoes.map((t) => {
-                    const cfg = TIPO_CFG[t.tipo];
-                    return (
-                      <tr
-                        key={t.id}
-                        className="hover:bg-slate-50/60 transition-colors group/row"
-                      >
-                        <td className="py-3 pr-4 text-[11px] text-slate-400 font-medium whitespace-nowrap">
-                          {fmtDate(t.data_transacao)}
-                        </td>
-                        <td className="py-3 pr-4">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${cfg.bg} ${cfg.text}`}
-                          >
-                            {cfg.label}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-4 text-sm font-black text-slate-800 whitespace-nowrap">
-                          R$ {fmtBRL(t.valor)}
-                        </td>
-                        <td className="py-3 pr-4 text-[11px] font-semibold text-slate-600">
-                          {t.origem && (
-                            <span className="flex items-center gap-1 flex-wrap">
-                              <span className="text-violet-600">
-                                {t.origem}
-                              </span>
-                              <ArrowRight
-                                size={10}
-                                className="text-slate-300 shrink-0"
-                              />
-                              <span>{t.destino}</span>
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 pr-4 text-[11px] text-slate-400 max-w-[200px] truncate">
-                          {t.detalhes ?? "—"}
-                        </td>
-                        <td className="py-3 text-right">
-                          <div className="flex justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => abrirEdicao(t)}
-                              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                            <button
-                              onClick={() => deletar(t.id)}
-                              className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ── MODAL ───────────────────────────────────────────────────────── */}
-        {modalTransacao && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl relative space-y-5">
-              <button
-                onClick={fechar}
-                className="absolute right-4 top-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <X size={16} />
-              </button>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  {editando ? "Editar transação" : "Nova transação"}
-                </h3>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  Casa Jardim Mirante
-                </p>
-              </div>
-              <form onSubmit={salvar} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Data">
-                    <input
-                      required
-                      type="date"
-                      className={inputCls}
-                      value={form.data_transacao}
-                      onChange={(e) =>
-                        setForm({ ...form, data_transacao: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="Tipo">
-                    <select
-                      className={inputCls}
-                      value={form.tipo}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          tipo: e.target.value as Transacao["tipo"],
-                        })
-                      }
-                    >
-                      <option value="entrada">Entrada</option>
-                      <option value="antecipacao">Antecipação</option>
-                      <option value="fgts">FGTS</option>
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Valor (R$)">
-                  <input
-                    required
-                    type="number"
-                    step="any"
-                    placeholder="0,00"
-                    className={inputCls}
-                    value={form.valor}
-                    onChange={(e) =>
-                      setForm({ ...form, valor: e.target.value })
-                    }
-                  />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Origem">
-                    <input
-                      type="text"
-                      placeholder="Ex: Edson Drews"
-                      className={inputCls}
-                      value={form.origem}
-                      onChange={(e) =>
-                        setForm({ ...form, origem: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="Destino">
-                    <input
-                      type="text"
-                      placeholder="Ex: Rudimar Vivian"
-                      className={inputCls}
-                      value={form.destino}
-                      onChange={(e) =>
-                        setForm({ ...form, destino: e.target.value })
-                      }
-                    />
-                  </Field>
-                </div>
-                <Field label="Detalhes (opcional)">
-                  <input
-                    type="text"
-                    placeholder="Observações..."
-                    className={inputCls}
-                    value={form.detalhes}
-                    onChange={(e) =>
-                      setForm({ ...form, detalhes: e.target.value })
-                    }
-                  />
-                </Field>
-                <button
-                  type="submit"
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm py-2.5 rounded-xl transition-colors"
-                >
-                  Salvar transação
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
+          {listaAtual.length === 0 && (
+            <div className="text-center py-12 text-slate-400 text-sm">Nenhum aporte encontrado.</div>
+          )}
+        </div>
       </div>
+
+      {/* ── Modais ── */}
+      {modalAporte && (
+        <ModalAporte
+          aporte={aporteEditando ?? undefined}
+          onFechar={() => { setModalAporte(false); setAporteEditando(null) }}
+          onSalvo={() => { setModalAporte(false); setAporteEditando(null); carregar() }}
+        />
+      )}
+      {modalCasa && (
+        <ModalEditarCasa
+          casa={casa}
+          onFechar={() => setModalCasa(false)}
+          onSalvo={() => { setModalCasa(false); carregar() }}
+        />
+      )}
     </div>
-  );
+  )
 }

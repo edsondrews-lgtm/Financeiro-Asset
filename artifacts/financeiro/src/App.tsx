@@ -3,6 +3,7 @@ import { supabase } from "./lib/supabaseClient";
 import ControleEmpresa from "./views/ControleEmpresa";
 import SaidasPainel from "./views/SaidasPainel";
 import EntradasPessoais from "./views/EntradasPessoais";
+import CasaJardimMirante from "./views/CasaJardimMirante";
 import Apartamento from "./views/Apartamento";
 import PasswordGate from "./components/PasswordGate";
 import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
@@ -12,7 +13,7 @@ import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Shield, Target, Calendar,
-  ArrowRight, BedDouble, Trees,
+  ArrowRight, BedDouble, Trees, Building,
 } from "lucide-react";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -47,6 +48,7 @@ export default function App() {
   const [proximaParcela, setProximaParcela] = useState<any | null>(null);
   // Imóvel — dados dinâmicos do banco
   const [imovelPago, setImovelPago] = useState(0);
+  const [casaPago, setCasaPago] = useState(0);
   const [imovelAtualizado, setImovelAtualizado] = useState(0);
   const [proximaParcelaImovel, setProximaParcelaImovel] = useState<{ valor: number; dias: number } | null>(null);
   const [escrituraPaga, setEscriturapaga] = useState(0); // valor em R$ já pago na escritura
@@ -71,7 +73,7 @@ export default function App() {
       const [
         rNotas, rDespesas, rEntradas, rSaidas,
         rCaixinhas, rConsorcios, rParcela,
-        rCub, rParcelasImovel, rReforcos, rImovel,
+        rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
       ] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
@@ -84,6 +86,7 @@ export default function App() {
         supabase.from("imovel_parcelas").select("numero_parcela,valor_pago,adiantada"),
         supabase.from("imovel_reforcos").select("valor_reais,cubs_pagos,is_escritura"),
         supabase.from("imovel").select("valor_original,cub_referencia_original").limit(1).single(),
+        supabase.from("casa_aportes").select("valor"),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
@@ -93,6 +96,10 @@ export default function App() {
       if (rCaixinhas.data)  setCaixinhas(rCaixinhas.data);
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
+
+      // ── Total casa ──
+      const totalCasa = (rCasaAportes.data || []).reduce((s: number, a: any) => s + (Number(a.valor) || 0), 0);
+      setCasaPago(totalCasa);
 
       // ── Cálculos do imóvel ──
       const reforcos = rReforcos.data || [];
@@ -158,7 +165,7 @@ export default function App() {
   // ── Patrimônio ──
   const totalCaixinhas = caixinhas.reduce((s, c) => s + (Number(c.valor_atual) || 0), 0);
   const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem) || 0), 0);
-  const patrimonioTotal = imovelPago + totalCaixinhas + totalConsorcios;
+  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios;
   const faturamentoAno = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
   const diasParaParcela = proximaParcela?.data_vencimento ? (() => {
@@ -185,7 +192,7 @@ export default function App() {
 
   const subItensImovel = [
     { id: "apartamento", label: "Apartamento 810", icon: <BedDouble size={13}/> },
-    { id: "casa",        label: "Casa (em breve)",  icon: <Trees size={13}/>,  disabled: true },
+    { id: 'casa', label: 'Casa Jardim Mirante', icon: <Trees size={13}/> },
   ];
 
   const subItensInvestimento = [
@@ -248,11 +255,12 @@ export default function App() {
               <p className="text-4xl font-black tabular-nums text-white">{fmt(patrimonioTotal)}</p>
               <p className="text-xs text-slate-500 font-semibold mt-1">Imóvel + Caixinhas + Consórcio</p>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
               {[
-                { label: "Imóvel",    valor: imovelPago,      icon: <Home size={14}/>,      cor: "text-cyan-400",   nota: "pago até hoje" },
+                { label: "Apt 810",   valor: imovelPago,      icon: <Home size={14}/>,      cor: "text-cyan-400",   nota: "pago até hoje" },
                 { label: "Caixinhas", valor: totalCaixinhas,  icon: <PiggyBank size={14}/>, cor: "text-emerald-400",nota: `${caixinhas.length} cofrinhos` },
                 { label: "Consórcio", valor: totalConsorcios, icon: <Shield size={14}/>,    cor: "text-violet-400", nota: "crédito total" },
+                { label: "Casa",      valor: casaPago,        icon: <Home size={14}/>,      cor: "text-emerald-400",nota: "Jardim Mirante" },
                 { label: "Ações",     valor: 0,               icon: <PieChart size={14}/>,  cor: "text-slate-500",  nota: "não cadastrado" },
               ].map((item, i) => (
                 <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-3 min-w-[130px]">
@@ -610,11 +618,7 @@ export default function App() {
           {abaAtiva === "geral"   && <PainelGeral />}
           {abaAtiva === "empresa" && <ControleEmpresa />}
           {abaAtiva === "imoveis" && subAbaImovel === "apartamento" && <Apartamento />}
-          {abaAtiva === "imoveis" && subAbaImovel === "casa" && (
-            <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
-              🏠 Módulo Casa em construção...
-            </div>
-          )}
+          {abaAtiva === "imoveis" && subAbaImovel === "casa" && <CasaJardimMirante />}
           {abaAtiva === "pessoal" && subAbaPessoal === "entradas" && <EntradasPessoais />}
           {abaAtiva === "pessoal" && subAbaPessoal === "saidas"   && <SaidasPainel />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"      && <CarteiraInvestimentos />}
