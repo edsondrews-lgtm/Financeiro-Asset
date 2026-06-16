@@ -555,6 +555,16 @@ function ModalHistoricoCub({ historico, imovel, onFechar, onAtualizar }: {
 
 // ─── Aba Análise & Comparativo ────────────────────────────────────────────────
 
+const TAXAS_MERCADO = [
+  { label: 'Caixa — SFH (TR)',  taxa: 10.99 },
+  { label: 'Caixa — IPCA',      taxa: 8.19  },
+  { label: 'Itaú',              taxa: 11.49 },
+  { label: 'Bradesco',          taxa: 11.20 },
+  { label: 'Santander',         taxa: 11.09 },
+  { label: 'BB — SFH',          taxa: 10.50 },
+  { label: 'Personalizado',     taxa: 0     },
+]
+
 function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas, reforcos, economiaAdiantamentos, cubEfetivoValor }: {
   historicoCub: CubRegistro[]
   imovel: Imovel
@@ -565,12 +575,14 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
   economiaAdiantamentos: number
   cubEfetivoValor: number
 }) {
-  const [analiseIA, setAnaliseIA] = useState<string>('')
-  const [carregandoIA, setCarregandoIA] = useState(false)
+  const [analise, setAnalise] = useState<string>('')
+  const [carregandoAnalise, setCarregandoAnalise] = useState(false)
   const [cdiData, setCdiData] = useState<{ mes: string; cdi: number }[]>([])
   const [carregandoCDI, setCarregandoCDI] = useState(true)
+  const [taxaSelecionada, setTaxaSelecionada] = useState(TAXAS_MERCADO[0])
+  const [taxaCustom, setTaxaCustom] = useState('10.99')
 
-  // Busca CDI mensal do Banco Central (série 4391 = CDI acumulado mensal)
+  // Busca CDI mensal do Banco Central (série 4391 = CDI mensal %)
   useEffect(() => {
     async function buscarCDI() {
       try {
@@ -578,10 +590,9 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
           'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4391/dados?formato=json&dataInicial=01/12/2022'
         )
         const data = await res.json()
-        // data = [{data: "01/12/2022", valor: "1.07"}, ...]
         const mapped = (data as any[]).map((d: any) => ({
-          mes: d.data, // DD/MM/YYYY
-          cdi: parseFloat(d.valor), // % no mês
+          mes: d.data,
+          cdi: parseFloat(d.valor),
         }))
         setCdiData(mapped)
       } catch {
@@ -593,25 +604,34 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
     buscarCDI()
   }, [])
 
-  // Monta série de dados para o gráfico
+  // Taxa de financiamento efetiva
+  const taxaAnual = taxaSelecionada.label === 'Personalizado' ? parseFloat(taxaCustom) || 0 : taxaSelecionada.taxa
+  const taxaMensal = Math.pow(1 + taxaAnual / 100, 1 / 12) - 1
+
+  // Monta série CUB — índice base 100 em dez/2022
   const sorted = [...historicoCub].sort((a, b) => a.data_registro.localeCompare(b.data_registro))
   const cubBase = sorted[0]?.valor_cub ?? 1
-
-  // Índice CUB: começa em 100 em dez/2022
   const seriesCUB = sorted.map(c => ({
     mes: c.mes_ano,
     valor: parseFloat(((c.valor_cub / cubBase) * 100).toFixed(2)),
-    cubValor: c.valor_cub,
   }))
 
-  // Índice CDI: acumulado mês a mês partindo de 100
-  let acumuladoCDI = 100
+  // Série CDI acumulado base 100
+  let acumCDI = 100
   const seriesCDI: { mes: string; valor: number }[] = []
   cdiData.forEach(d => {
-    acumuladoCDI = acumuladoCDI * (1 + d.cdi / 100)
-    const [dd, mm, yyyy] = d.mes.split('/')
-    seriesCDI.push({ mes: `${mm}/${yyyy}`, valor: parseFloat(acumuladoCDI.toFixed(2)) })
+    acumCDI = acumCDI * (1 + d.cdi / 100)
+    const [, mm, yyyy] = d.mes.split('/')
+    seriesCDI.push({ mes: `${mm}/${yyyy}`, valor: parseFloat(acumCDI.toFixed(2)) })
   })
+
+  // Série Financiamento — simula custo acumulado de um financiamento
+  // Parte de 100 e cresce com juros compostos mensais
+  const nMeses = seriesCUB.length
+  const seriesFIN: { mes: string; valor: number }[] = seriesCUB.map((s, i) => ({
+    mes: s.mes,
+    valor: parseFloat((100 * Math.pow(1 + taxaMensal, i)).toFixed(2)),
+  }))
 
   // Unifica meses
   const todosOsMeses = Array.from(new Set([
@@ -624,132 +644,148 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
 
   const cubPorMes = Object.fromEntries(seriesCUB.map(s => [s.mes, s.valor]))
   const cdiPorMes = Object.fromEntries(seriesCDI.map(s => [s.mes, s.valor]))
+  const finPorMes = Object.fromEntries(seriesFIN.map(s => [s.mes, s.valor]))
 
-  // Interpola valores faltantes
-  const dadosGrafico = todosOsMeses.map(mes => ({
-    mes,
-    cub: cubPorMes[mes] ?? null,
-    cdi: cdiPorMes[mes] ?? null,
-  }))
-
-  // Preenche gaps do CUB (mantém último valor conhecido)
   let lastCUB = 100
-  const dadosFinal = dadosGrafico.map(d => {
-    if (d.cub !== null) lastCUB = d.cub
-    return { ...d, cub: d.cub ?? lastCUB }
+  const dadosFinal = todosOsMeses.map(mes => {
+    if (cubPorMes[mes]) lastCUB = cubPorMes[mes]
+    return {
+      mes,
+      cub: cubPorMes[mes] ?? lastCUB,
+      cdi: cdiPorMes[mes] ?? null,
+      fin: finPorMes[mes] ?? null,
+    }
   })
 
   // Stats finais
-  const cubFinal = seriesCUB[seriesCUB.length - 1]?.valor ?? 100
-  const cdiFinal = seriesCDI[seriesCDI.length - 1]?.valor ?? 100
-  const cubVariacao = parseFloat((cubFinal - 100).toFixed(2))
-  const cdiVariacao = parseFloat((cdiFinal - 100).toFixed(2))
-  const cubGanhaCDI = cubVariacao > cdiVariacao
+  const cubFinal  = seriesCUB[seriesCUB.length - 1]?.valor ?? 100
+  const cdiFinal  = seriesCDI[seriesCDI.length - 1]?.valor ?? 100
+  const finFinal  = seriesFIN[seriesFIN.length - 1]?.valor ?? 100
+  const cubVar    = parseFloat((cubFinal - 100).toFixed(2))
+  const cdiVar    = parseFloat((cdiFinal - 100).toFixed(2))
+  const finVar    = parseFloat((finFinal - 100).toFixed(2))
+  const cubGanhaCDI = cubVar > cdiVar
+  const economiaSobreFinanciamento = imovel.valor_original * (finVar - cubVar) / 100
 
-  // SVG do gráfico
-  const W = 700, H = 280, PAD = { top: 20, right: 20, bottom: 40, left: 50 }
-  const allValues = dadosFinal.flatMap(d => [d.cub, d.cdi ?? 0]).filter(Boolean)
-  const minV = Math.min(...allValues) * 0.99
-  const maxV = Math.max(...allValues) * 1.01
+  // SVG
+  const W = 720, H = 300, PAD = { top: 20, right: 20, bottom: 40, left: 52 }
+  const allV = dadosFinal.flatMap(d => [d.cub, d.cdi ?? 0, d.fin ?? 0]).filter(Boolean)
+  const minV = Math.min(...allV) * 0.98
+  const maxV = Math.max(...allV) * 1.02
   const xStep = (W - PAD.left - PAD.right) / Math.max(dadosFinal.length - 1, 1)
-  const yScale = (v: number) => PAD.top + (H - PAD.top - PAD.bottom) * (1 - (v - minV) / (maxV - minV))
+  const yS = (v: number) => PAD.top + (H - PAD.top - PAD.bottom) * (1 - (v - minV) / (maxV - minV))
 
-  const pathCUB = dadosFinal.map((d, i) =>
-    `${i === 0 ? 'M' : 'L'} ${PAD.left + i * xStep} ${yScale(d.cub)}`
-  ).join(' ')
+  const pathCUB = dadosFinal.map((d, i) => `${i === 0 ? 'M' : 'L'} ${PAD.left + i * xStep} ${yS(d.cub)}`).join(' ')
+  const pathCDI = dadosFinal.filter(d => d.cdi !== null).map((d) => {
+    const i = dadosFinal.findIndex(x => x.mes === d.mes)
+    return `${dadosFinal.slice(0, i).every(x => x.cdi === null) ? 'M' : 'L'} ${PAD.left + i * xStep} ${yS(d.cdi!)}`
+  }).join(' ')
+  const pathFIN = dadosFinal.filter(d => d.fin !== null).map((d) => {
+    const i = dadosFinal.findIndex(x => x.mes === d.mes)
+    return `${dadosFinal.slice(0, i).every(x => x.fin === null) ? 'M' : 'L'} ${PAD.left + i * xStep} ${yS(d.fin!)}`
+  }).join(' ')
 
-  const pathCDI = dadosFinal
-    .filter(d => d.cdi !== null)
-    .map((d, i, arr) => {
-      const globalIdx = dadosFinal.findIndex(x => x.mes === d.mes)
-      return `${i === 0 ? 'M' : 'L'} ${PAD.left + globalIdx * xStep} ${yScale(d.cdi!)}`
-    }).join(' ')
-
-  // Marcadores do eixo X (a cada 6 meses)
   const labelsX = dadosFinal.filter((_, i) => i % 6 === 0 || i === dadosFinal.length - 1)
+  const fmt2 = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-  // Gerar análise via servidor Express (sem CORS)
-  async function gerarAnalise() {
-    setCarregandoIA(true)
-    setAnaliseIA('')
-    try {
-      const fmt2 = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  // Análise local inteligente
+  function gerarAnalise() {
+    setCarregandoAnalise(true)
+    setAnalise('')
+    setTimeout(() => {
+      const parcelasAdiantadasQtd = parcelas.filter(p => p.adiantada).length
+      const parcelasNormaisQtd = parcelas.filter(p => !p.adiantada).length
       const mesesRestantes = Math.max(0,
         (new Date(imovel.data_entrega_chaves).getFullYear() - new Date().getFullYear()) * 12 +
         (new Date(imovel.data_entrega_chaves).getMonth() - new Date().getMonth())
       )
+      const progresso = ((totalPago / valorAtualizado) * 100).toFixed(1)
+      const valorRestante = valorAtualizado - totalPago
+      const mediaMensal = parcelasNormaisQtd > 0 ? totalPago / parcelasNormaisQtd : 0
 
-      const res = await fetch('/api/analise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          periodo: `Dezembro/2022 até hoje (${dadosFinal.length} meses)`,
-          cubVariacao: `+${cubVariacao.toFixed(1)}%`,
-          cdiVariacao: `+${cdiVariacao.toFixed(1)}%`,
-          cubVenceCDI: cubGanhaCDI,
-          valorOriginal: fmt2(imovel.valor_original),
-          valorAtualizado: fmt2(valorAtualizado),
-          totalPago: fmt2(totalPago),
-          parcelasNormais: parcelas.filter(p => !p.adiantada).length,
-          parcelasAdiantadas: parcelas.filter(p => p.adiantada).length,
-          economiaAdiantamentos: fmt2(economiaAdiantamentos),
-          cubAtual: fmt2(cubEfetivoValor),
-          mesesRestantes,
-          entregaPrevista: 'Dezembro/2027',
-        }),
-      })
-      const data = await res.json()
-      if (data.analise) {
-        setAnaliseIA(data.analise)
-      } else {
-        setAnaliseIA('Não foi possível gerar a análise. Tente novamente.')
-      }
-    } catch {
-      setAnaliseIA('Erro ao conectar com o servidor. Tente novamente.')
-    }
-    setCarregandoIA(false)
+      // § 1 — CUB vs CDI
+      const difCubCdi = Math.abs(cubVar - cdiVar).toFixed(1)
+      const p1 = cubGanhaCDI
+        ? `Desde dezembro de 2022, o CUB acumulou +${cubVar.toFixed(1)}%, superando o CDI 100% que rendeu +${cdiVar.toFixed(1)}% no mesmo período — uma vantagem de ${difCubCdi} pontos percentuais. Isso significa que o custo do seu apartamento corrigido pelo CUB está subindo mais do que a principal referência de renda fixa do Brasil. Em outras palavras, o imóvel está ficando mais caro em termos de reposição, mas como você já travou o preço no contrato, você se beneficia dessa valorização.`
+        : `Desde dezembro de 2022, o CDI 100% acumulou +${cdiVar.toFixed(1)}%, superando o CUB que corrigiu +${cubVar.toFixed(1)}% no mesmo período — uma diferença de ${difCubCdi} pontos percentuais. Em termos puramente financeiros, o dinheiro renderia mais no CDI, mas isso não conta toda a história: você está construindo patrimônio imobiliário real com valorização de mercado que vai muito além do índice de construção.`
+
+      // § 2 — Vs Financiamento bancário
+      const economiaPretty = fmt2(Math.abs(economiaSobreFinanciamento))
+      const p2 = `Comparando com um financiamento bancário pela ${taxaSelecionada.label} (${taxaAnual.toFixed(2)}% a.a.), o custo acumulado seria de +${finVar.toFixed(1)}% no mesmo período — enquanto o CUB corrigiu apenas +${cubVar.toFixed(1)}%. Isso representa uma economia estimada de ${economiaPretty} sobre o valor original do imóvel. Em resumo, comprar diretamente da construtora com correção por CUB foi significativamente mais barato do que teria sido um financiamento tradicional, que além dos juros ainda teria tarifas, seguros e IOF embutidos.`
+
+      // § 3 — Adiantamentos
+      const p3 = parcelasAdiantadasQtd > 0
+        ? `A estratégia de adiantar ${parcelasAdiantadasQtd} parcelas foi inteligente e gerou uma economia real de ${fmt2(economiaAdiantamentos)}. Como o CUB tende a subir todo mês, cada parcela paga antecipadamente é sempre mais barata do que será no futuro. Com ${mesesRestantes} meses ainda pela frente até a entrega e o CUB em ${fmt2(cubEfetivoValor)}, continue adiantando sempre que tiver liquidez disponível — a economia se acumula mês a mês.`
+        : `Você ainda não adiantou parcelas. Vale considerar: com o CUB em ${fmt2(cubEfetivoValor)} e tendência de alta, adiantar parcelas hoje significa pagar com o índice atual em vez do índice futuro mais alto. Com ${mesesRestantes} meses até a entrega, mesmo adiantando uma ou duas parcelas por mês a economia acumulada pode ser expressiva.`
+
+      // § 4 — Situação geral
+      const p4 = `No geral, o investimento está ${parseFloat(progresso) > 45 ? 'muito bem encaminhado' : 'no caminho certo'}. Você já pagou ${fmt2(totalPago)}, representando ${progresso}% do valor atualizado de ${fmt2(valorAtualizado)}. O valor restante estimado é de ${fmt2(valorRestante)}, incluindo parcelas mensais e a escritura na entrega. Com pagamentos em dia e média mensal de ${fmt2(mediaMensal)}, a tendência é chegar à entrega de dezembro/2027 com tranquilidade financeira. Recomendação: mantenha o ritmo, atualize o CUB todo mês e prepare uma reserva para a escritura.`
+
+      setAnalise([p1, p2, p3, p4].join('\n\n'))
+      setCarregandoAnalise(false)
+    }, 800)
   }
 
   return (
     <div className="p-6 space-y-6">
 
-      {/* Cards de comparação */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* ── Cards de comparação ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 space-y-1">
-          <div className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">CUB acumulado (dez/22 → hoje)</div>
-          <div className="text-3xl font-black text-indigo-700">+{cubVariacao.toFixed(1)}%</div>
-          <div className="text-xs text-indigo-500">De R$ {imovel.cub_referencia_original.toLocaleString('pt-BR')} → R$ {cubEfetivoValor.toLocaleString('pt-BR')}</div>
+          <div className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">CUB acumulado</div>
+          <div className="text-2xl font-black text-indigo-700">+{cubVar.toFixed(1)}%</div>
+          <div className="text-xs text-indigo-400">Dez/22 → hoje</div>
         </div>
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-1">
-          <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">CDI 100% acumulado (dez/22 → hoje)</div>
-          <div className="text-3xl font-black text-emerald-700">
-            {carregandoCDI ? '...' : `+${cdiVariacao.toFixed(1)}%`}
-          </div>
-          <div className="text-xs text-emerald-500">Fonte: Banco Central do Brasil</div>
+          <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">CDI 100% acumulado</div>
+          <div className="text-2xl font-black text-emerald-700">{carregandoCDI ? '...' : `+${cdiVar.toFixed(1)}%`}</div>
+          <div className="text-xs text-emerald-400">Banco Central · BCB</div>
         </div>
-        <div className={`rounded-2xl p-4 space-y-1 ${cubGanhaCDI ? 'bg-amber-50 border border-amber-200' : 'bg-rose-50 border border-rose-200'}`}>
-          <div className={`text-[10px] font-black uppercase tracking-wider ${cubGanhaCDI ? 'text-amber-500' : 'text-rose-400'}`}>
-            {cubGanhaCDI ? '🏆 CUB supera o CDI' : '📉 CDI supera o CUB'}
-          </div>
-          <div className={`text-3xl font-black ${cubGanhaCDI ? 'text-amber-700' : 'text-rose-600'}`}>
-            {carregandoCDI ? '...' : `${Math.abs(cubVariacao - cdiVariacao).toFixed(1)}% ${cubGanhaCDI ? 'acima' : 'abaixo'}`}
-          </div>
-          <div className={`text-xs ${cubGanhaCDI ? 'text-amber-500' : 'text-rose-400'}`}>
-            {cubGanhaCDI ? 'O CUB valorizou mais que o CDI' : 'O CDI rendeu mais que o CUB no período'}
-          </div>
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-1">
+          <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">Financiamento bancário</div>
+          <div className="text-2xl font-black text-rose-700">+{finVar.toFixed(1)}%</div>
+          <div className="text-xs text-rose-400">{taxaAnual.toFixed(2)}% a.a. acumulado</div>
+        </div>
+        <div className={`rounded-2xl p-4 space-y-1 border ${economiaSobreFinanciamento > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="text-[10px] font-black text-amber-500 uppercase tracking-wider">Economia vs financiamento</div>
+          <div className="text-2xl font-black text-amber-700">{fmt2(Math.abs(economiaSobreFinanciamento))}</div>
+          <div className="text-xs text-amber-400">você pagou menos que um banco cobraria</div>
         </div>
       </div>
 
-      {/* Gráfico SVG */}
+      {/* ── Seletor de taxa ── */}
+      <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+        <div className="text-xs font-black text-slate-400 uppercase tracking-wider mb-3">Taxa de Financiamento para Comparação</div>
+        <div className="flex flex-wrap gap-2">
+          {TAXAS_MERCADO.map(t => (
+            <button key={t.label}
+              onClick={() => setTaxaSelecionada(t)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${taxaSelecionada.label === t.label ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-500 border-slate-200 hover:border-rose-300'}`}>
+              {t.label}{t.taxa > 0 ? ` · ${t.taxa}% a.a.` : ''}
+            </button>
+          ))}
+        </div>
+        {taxaSelecionada.label === 'Personalizado' && (
+          <div className="mt-3 flex items-center gap-3">
+            <label className="text-xs font-bold text-slate-500">Taxa anual (% a.a.):</label>
+            <input type="number" value={taxaCustom} onChange={e => setTaxaCustom(e.target.value)}
+              step="0.01" min="0" max="30"
+              className="border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold text-slate-700 focus:outline-none focus:border-rose-400 w-28" />
+          </div>
+        )}
+      </div>
+
+      {/* ── Gráfico SVG ── */}
       <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div>
-            <div className="text-sm font-black text-slate-700">CUB vs CDI — Índice Base 100 (Dez/2022)</div>
+            <div className="text-sm font-black text-slate-700">CUB vs CDI vs Financiamento — Índice Base 100 (Dez/2022)</div>
             <div className="text-xs text-slate-400 mt-0.5">Evolução acumulada desde o início do contrato</div>
           </div>
-          <div className="flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1.5"><div className="w-4 h-0.5 bg-indigo-500 rounded"/><span className="text-slate-500 font-semibold">CUB</span></div>
-            <div className="flex items-center gap-1.5"><div className="w-4 h-0.5 bg-emerald-500 rounded border-dashed"/><span className="text-slate-500 font-semibold">CDI 100%</span></div>
+          <div className="flex items-center gap-4 text-xs flex-wrap">
+            <div className="flex items-center gap-1.5"><div className="w-5 h-[3px] bg-indigo-500 rounded"/><span className="text-slate-500 font-semibold">CUB</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-5 h-[2px] bg-emerald-500 rounded" style={{borderTop:'2px dashed #10b981',background:'none'}}/><span className="text-slate-500 font-semibold">CDI 100%</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-5 h-[2px] bg-rose-400 rounded" style={{borderTop:'2px dotted #f87171',background:'none'}}/><span className="text-slate-500 font-semibold">Financiamento ({taxaAnual.toFixed(1)}% a.a.)</span></div>
           </div>
         </div>
 
@@ -758,43 +794,46 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
             <RefreshCw size={14} className="animate-spin"/> Carregando dados do Banco Central...
           </div>
         ) : (
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 300 }}>
-            {/* Grid horizontal */}
-            {[0, 25, 50, 75, 100].map(pct => {
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 320 }}>
+            {[0,25,50,75,100].map(pct => {
               const v = minV + (maxV - minV) * (pct / 100)
-              const y = yScale(v)
+              const y = yS(v)
               return (
                 <g key={pct}>
-                  <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#f1f5f9" strokeWidth="1"/>
-                  <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="9" fill="#94a3b8">{v.toFixed(0)}</text>
+                  <line x1={PAD.left} y1={y} x2={W-PAD.right} y2={y} stroke="#f1f5f9" strokeWidth="1"/>
+                  <text x={PAD.left-6} y={y+4} textAnchor="end" fontSize="9" fill="#94a3b8">{v.toFixed(0)}</text>
                 </g>
               )
             })}
 
-            {/* Linha base 100 */}
-            <line x1={PAD.left} y1={yScale(100)} x2={W - PAD.right} y2={yScale(100)}
-              stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,4"/>
+            {/* Base 100 */}
+            <line x1={PAD.left} y1={yS(100)} x2={W-PAD.right} y2={yS(100)} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4,4"/>
 
-            {/* Linha CDI */}
-            <path d={pathCDI} fill="none" stroke="#10b981" strokeWidth="2" strokeDasharray="6,3" opacity="0.8"/>
+            {/* Financiamento */}
+            <path d={pathFIN} fill="none" stroke="#f87171" strokeWidth="2" strokeDasharray="3,3" opacity="0.9"/>
 
-            {/* Linha CUB */}
-            <path d={pathCUB} fill="none" stroke="#6366f1" strokeWidth="2.5"/>
+            {/* CDI */}
+            <path d={pathCDI} fill="none" stroke="#10b981" strokeWidth="2" strokeDasharray="6,3" opacity="0.85"/>
 
-            {/* Ponto final CUB */}
+            {/* CUB — destaque */}
+            <path d={pathCUB} fill="none" stroke="#6366f1" strokeWidth="3"/>
+
+            {/* Pontos finais */}
             {dadosFinal.length > 0 && (() => {
               const last = dadosFinal[dadosFinal.length - 1]
               const x = PAD.left + (dadosFinal.length - 1) * xStep
-              const y = yScale(last.cub)
-              return <circle cx={x} cy={y} r="4" fill="#6366f1"/>
+              return <>
+                <circle cx={x} cy={yS(last.cub)} r="5" fill="#6366f1"/>
+                {last.cdi && <circle cx={x} cy={yS(last.cdi)} r="4" fill="#10b981"/>}
+                {last.fin && <circle cx={x} cy={yS(last.fin)} r="4" fill="#f87171"/>}
+              </>
             })()}
 
-            {/* Labels eixo X */}
+            {/* Labels X */}
             {labelsX.map(d => {
               const i = dadosFinal.findIndex(x => x.mes === d.mes)
-              const x = PAD.left + i * xStep
               return (
-                <text key={d.mes} x={x} y={H - 8} textAnchor="middle" fontSize="8" fill="#94a3b8">
+                <text key={d.mes} x={PAD.left + i * xStep} y={H-8} textAnchor="middle" fontSize="8" fill="#94a3b8">
                   {d.mes}
                 </text>
               )
@@ -803,49 +842,49 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
         )}
       </div>
 
-      {/* Análise IA */}
+      {/* ── Análise ── */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-violet-100 text-violet-600 rounded-lg"><Brain size={16}/></div>
             <div>
-              <div className="text-sm font-black text-slate-700">Análise Inteligente</div>
-              <div className="text-xs text-slate-400">Gerada por IA com base nos seus dados reais</div>
+              <div className="text-sm font-black text-slate-700">Análise do Investimento</div>
+              <div className="text-xs text-slate-400">Baseada nos seus dados reais</div>
             </div>
           </div>
-          <button onClick={gerarAnalise} disabled={carregandoIA}
+          <button onClick={gerarAnalise} disabled={carregandoAnalise}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
-            {carregandoIA
+            {carregandoAnalise
               ? <><RefreshCw size={12} className="animate-spin"/> Analisando...</>
-              : <><Sparkles size={12}/> {analiseIA ? 'Reanalisar' : 'Gerar Análise'}</>}
+              : <><Sparkles size={12}/> {analise ? 'Reanalisar' : 'Gerar Análise'}</>}
           </button>
         </div>
 
         <div className="p-5">
-          {!analiseIA && !carregandoIA && (
-            <div className="text-center py-8 text-slate-400 space-y-2">
-              <Brain size={32} className="mx-auto opacity-30"/>
-              <p className="text-sm">Clique em "Gerar Análise" para receber uma avaliação inteligente do seu investimento.</p>
+          {!analise && !carregandoAnalise && (
+            <div className="text-center py-10 text-slate-400 space-y-2">
+              <Brain size={36} className="mx-auto opacity-20"/>
+              <p className="text-sm">Clique em "Gerar Análise" para uma avaliação completa do seu investimento.</p>
             </div>
           )}
-          {carregandoIA && (
+          {carregandoAnalise && (
             <div className="space-y-3 animate-pulse">
               {[1,2,3,4].map(i => (
                 <div key={i} className="space-y-1.5">
                   <div className="h-3 bg-slate-100 rounded-full w-full"/>
                   <div className="h-3 bg-slate-100 rounded-full w-5/6"/>
-                  {i < 4 && <div className="h-3 bg-slate-100 rounded-full w-4/5"/>}
+                  <div className="h-3 bg-slate-100 rounded-full w-4/5"/>
                 </div>
               ))}
             </div>
           )}
-          {analiseIA && !carregandoIA && (
-            <div className="space-y-3">
-              {analiseIA.split('\n').filter(p => p.trim()).map((p, i) => (
+          {analise && !carregandoAnalise && (
+            <div className="space-y-4">
+              {analise.split('\n\n').filter(p => p.trim()).map((p, i) => (
                 <p key={i} className="text-sm text-slate-600 leading-relaxed">{p}</p>
               ))}
               <div className="pt-3 border-t border-slate-50 text-[10px] text-slate-300 flex items-center gap-1">
-                <Sparkles size={10}/> Análise gerada por Claude · Baseada nos seus dados reais do Supabase
+                <Sparkles size={10}/> Análise gerada com base nos seus dados reais · Atualizada agora
               </div>
             </div>
           )}
@@ -854,6 +893,7 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
     </div>
   )
 }
+
 
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
@@ -894,7 +934,6 @@ export default function Apartamento() {
   if (carregando) return <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Carregando...</div>
   if (!imovel) return <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Nenhum imóvel cadastrado.</div>
 
-  // ── Cálculos ──
   const cubEfetivoValor = cubEfetivo(historicoCub)
   const cubAtualReg = cubAtual(historicoCub)
   const parcelasNormais = parcelas.filter(p => !p.adiantada)
@@ -916,17 +955,14 @@ export default function Apartamento() {
     return d.toISOString().split('T')[0]
   })()
 
-  // Valor total corrigido pelo CUB
   const totalCubsOriginal = imovel.valor_original / imovel.cub_referencia_original
   const valorAtualizado = totalCubsOriginal * cubEfetivoValor
 
-  // Economia com adiantamentos
   const economiaAdiantamentos = parcelasAdiantadas.reduce((s, p) => {
     const valorHoje = calcularParcela(imovel.parcelas_cubs, cubEfetivoValor)
     return s + Math.max(0, valorHoje - p.valor_pago)
   }, 0)
 
-  // Escritura — CUBs já pagos e restantes
   const cubsEscrituraTotal = 29.6215
   const cubsPagosEscritura = reforcos
     .filter((r: any) => r.is_escritura)
@@ -940,11 +976,11 @@ export default function Apartamento() {
   const mesesRestantes = mesesAte(imovel.data_entrega_chaves)
   const pctTempo = progressoTempo(imovel.data_inicio_parcelas, imovel.data_entrega_chaves)
 
-  // Paginação da aba atual
   const listaAba = aba === 'normais' ? parcelasNormais
     : aba === 'adiantadas' ? parcelasAdiantadas
     : aba === 'reforcos' ? reforcos
-    : historicoCub
+    : aba === 'cub' ? historicoCub
+    : []
   const totalPaginas = Math.ceil((listaAba as any[]).length / porPagina)
   const listaAtual = (listaAba as any[]).slice((paginaAtual - 1) * porPagina, paginaAtual * porPagina)
 
@@ -967,7 +1003,6 @@ export default function Apartamento() {
   return (
     <div className="p-10 space-y-8 max-w-7xl mx-auto text-slate-700">
 
-      {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-md shadow-indigo-100">
@@ -979,11 +1014,11 @@ export default function Apartamento() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => { setModalCub(true) }}
+          <button onClick={() => setModalCub(true)}
             className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold">
             <RefreshCw size={13} /> Atualizar CUB
           </button>
-          <button onClick={() => { setModalHistCub(true) }}
+          <button onClick={() => setModalHistCub(true)}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold">
             <History size={13} /> Histórico CUB ({historicoCub.length})
           </button>
@@ -994,17 +1029,12 @@ export default function Apartamento() {
         </div>
       </div>
 
-      {/* ── Cards de resumo ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-
-        {/* CUB Atual */}
         <div className="bg-amber-500 p-5 rounded-2xl text-white shadow-sm space-y-1">
           <div className="text-xs text-amber-100 font-bold uppercase tracking-wider">CUB Atual ({cubAtualReg?.mes_ano})</div>
           <div className="text-3xl font-black">{fmt(cubEfetivoValor)}</div>
           <div className="text-xs text-amber-200">Próxima parcela: <span className="font-bold text-white">{fmt(proximaParcelaValor)}</span></div>
         </div>
-
-        {/* Valor atualizado */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Valor Atualizado</div>
           <div className="text-2xl font-black text-slate-800">{fmt(valorAtualizado)}</div>
@@ -1013,8 +1043,6 @@ export default function Apartamento() {
             {' · '}<span className="text-emerald-600 font-bold">+{fmt(valorAtualizado - imovel.valor_original)}</span>
           </div>
         </div>
-
-        {/* Total pago */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
           <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Pago</div>
           <div className="text-2xl font-black text-emerald-600">{fmt(totalPago)}</div>
@@ -1022,15 +1050,10 @@ export default function Apartamento() {
         </div>
       </div>
 
-      {/* ── Progresso ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-        {/* Tempo */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-              <Clock size={13} /> Tempo até Entrega das Chaves
-            </div>
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+            <Clock size={13} /> Tempo até Entrega das Chaves
           </div>
           <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
             <div className="h-3 rounded-full bg-cyan-400 transition-all" style={{ width: `${pctTempo}%` }} />
@@ -1040,8 +1063,6 @@ export default function Apartamento() {
             <span className="text-xs text-slate-400">Entrega prevista: {fmtDate(imovel.data_entrega_chaves)}</span>
           </div>
         </div>
-
-        {/* Pagamento */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
             <TrendingUp size={13} /> Progresso do Pagamento
@@ -1056,10 +1077,7 @@ export default function Apartamento() {
         </div>
       </div>
 
-      {/* ── Cards detalhados ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-
-        {/* Já pago detalhado */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><BarChart3 size={15} /></div>
@@ -1089,7 +1107,6 @@ export default function Apartamento() {
           </div>
         </div>
 
-        {/* Total a pagar */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-rose-100 text-rose-500 rounded-lg"><DollarSign size={15} /></div>
@@ -1128,7 +1145,6 @@ export default function Apartamento() {
           )}
         </div>
 
-        {/* Próxima parcela + economia */}
         <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 p-5 rounded-2xl text-white shadow-sm space-y-3">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-white/20 rounded-lg"><Calendar size={15} /></div>
@@ -1146,43 +1162,39 @@ export default function Apartamento() {
         </div>
       </div>
 
-      {/* ── Ações ── */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-5">
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gerenciar Financiamento</span>
         </div>
         <div className="flex gap-3 flex-wrap">
-          <button onClick={() => { setModalParcela(true) }}
+          <button onClick={() => setModalParcela(true)}
             className="flex flex-col items-center gap-1.5 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all">
             <Calendar size={16} /> Registrar Parcelas
           </button>
-          <button onClick={() => { setModalReforco(true) }}
+          <button onClick={() => setModalReforco(true)}
             className="flex flex-col items-center gap-1.5 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all">
             <Plus size={16} /> Adicionar Reforço
           </button>
-          <button onClick={() => { setModalCub(true) }}
+          <button onClick={() => setModalCub(true)}
             className="flex flex-col items-center gap-1.5 px-5 py-3 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold transition-all">
             <RefreshCw size={16} /> Atualizar CUB
           </button>
-          <button onClick={() => { setModalHistCub(true) }}
+          <button onClick={() => setModalHistCub(true)}
             className="flex flex-col items-center gap-1.5 px-5 py-3 bg-slate-600 hover:bg-slate-500 text-white rounded-xl text-xs font-bold transition-all">
             <History size={16} /> Ver Histórico CUB
           </button>
         </div>
       </div>
 
-      {/* ── Tabela de registros ── */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
-
-        {/* Abas */}
         <div className="p-4 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex gap-1.5 flex-wrap">
             {([
-              { key: 'normais', label: `Parcelas Normais (${parcelasNormais.length})` },
-              { key: 'adiantadas', label: `Parcelas Adiantadas (${parcelasAdiantadas.length})` },
-              { key: 'reforcos', label: `Reforços (${reforcos.length})` },
-              { key: 'cub', label: `Histórico CUB (${historicoCub.length})` },
-              { key: 'analise', label: '🧠 Análise & Comparativo' },
+              { key: 'normais',   label: `Parcelas Normais (${parcelasNormais.length})` },
+              { key: 'adiantadas',label: `Parcelas Adiantadas (${parcelasAdiantadas.length})` },
+              { key: 'reforcos',  label: `Reforços (${reforcos.length})` },
+              { key: 'cub',       label: `Histórico CUB (${historicoCub.length})` },
+              { key: 'analise',   label: '🧠 Análise & Comparativo' },
             ] as const).map(a => (
               <button key={a.key} onClick={() => { setAba(a.key); setPaginaAtual(1) }}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${aba === a.key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
@@ -1190,7 +1202,7 @@ export default function Apartamento() {
               </button>
             ))}
           </div>
-          {totalPaginas > 1 && (
+          {totalPaginas > 1 && aba !== 'analise' && (
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <button onClick={() => setPaginaAtual(p => Math.max(1, p - 1))} disabled={paginaAtual === 1}
                 className="p-1 disabled:opacity-30"><ChevronUp size={14} /></button>
@@ -1201,10 +1213,20 @@ export default function Apartamento() {
           )}
         </div>
 
-        {/* Conteúdo da aba */}
         <div className="overflow-x-auto">
+          {aba === 'analise' && (
+            <AbaAnalise
+              historicoCub={historicoCub}
+              imovel={imovel}
+              totalPago={totalPago}
+              valorAtualizado={valorAtualizado}
+              parcelas={parcelas}
+              reforcos={reforcos}
+              economiaAdiantamentos={economiaAdiantamentos}
+              cubEfetivoValor={cubEfetivoValor}
+            />
+          )}
 
-          {/* Parcelas normais */}
           {(aba === 'normais' || aba === 'adiantadas') && (
             <table className="w-full text-sm">
               <thead>
@@ -1264,7 +1286,6 @@ export default function Apartamento() {
             </table>
           )}
 
-          {/* Reforços */}
           {aba === 'reforcos' && (
             <table className="w-full text-sm">
               <thead>
@@ -1310,7 +1331,6 @@ export default function Apartamento() {
             </table>
           )}
 
-          {/* Histórico CUB */}
           {aba === 'cub' && (
             <table className="w-full text-sm">
               <thead>
@@ -1347,21 +1367,6 @@ export default function Apartamento() {
             </table>
           )}
 
-
-          {/* Aba Análise */}
-          {aba === 'analise' && (
-            <AbaAnalise
-              historicoCub={historicoCub}
-              imovel={imovel}
-              totalPago={totalPago}
-              valorAtualizado={valorAtualizado}
-              parcelas={parcelas}
-              reforcos={reforcos}
-              economiaAdiantamentos={economiaAdiantamentos}
-              cubEfetivoValor={cubEfetivoValor}
-            />
-          )}
-
           {aba !== 'analise' && (listaAtual as any[]).length === 0 && (
             <div className="text-center py-12 text-slate-400 text-sm">
               {aba === 'normais' && 'Nenhuma parcela registrada.'}
@@ -1373,7 +1378,6 @@ export default function Apartamento() {
         </div>
       </div>
 
-      {/* ── Modais ── */}
       {modalParcela && (
         <ModalParcela
           imovel={imovel}
