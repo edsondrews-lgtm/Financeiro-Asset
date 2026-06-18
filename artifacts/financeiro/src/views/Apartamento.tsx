@@ -4,6 +4,7 @@ import {
   Home, Plus, X, Trash2, Edit2, Check, History,
   TrendingUp, Calendar, RefreshCw, ChevronDown, ChevronUp,
   DollarSign, BarChart3, Clock, AlertTriangle, Zap, Brain, Sparkles,
+  Calculator, Target, TrendingDown, Award,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -553,6 +554,1124 @@ function ModalHistoricoCub({ historico, imovel, onFechar, onAtualizar }: {
   )
 }
 
+
+// ─── Simulador de Adiantamento — De Trás pra Frente ──────────────────────────
+
+function SimuladorQuitacao({ imovel, parcelas, cubEfetivoValor, totalPago, reforcos }: {
+  imovel: Imovel
+  parcelas: Parcela[]
+  cubEfetivoValor: number
+  totalPago: number
+  reforcos: Reforco[]
+}) {
+  const [crescCUB, setCrescCUB] = useState(0.8)
+  const [modalParcela, setModalParcela] = useState<LinhaSimulacao | null>(null)
+
+  const DATA_ENTREGA = new Date('2027-12-10T12:00:00')
+  const DATA_INICIO  = new Date('2022-12-10T12:00:00')
+  const CUBS         = imovel.parcelas_cubs // 0.8582
+
+  const parcelasNormais   = parcelas.filter(p => !p.adiantada)
+  const parcelasAdiantadas = parcelas.filter(p => p.adiantada)
+  const parcelasJaPagas   = new Set([...parcelasNormais, ...parcelasAdiantadas].map(p => p.numero_parcela))
+
+  // Data de vencimento original de cada parcela
+  function dataVencimento(numParcela: number): Date {
+    const d = new Date(DATA_INICIO)
+    d.setMonth(d.getMonth() + numParcela - 1)
+    return d
+  }
+
+  // Valor projetado de uma parcela na sua data original de vencimento
+  // usando crescimento estimado do CUB + 1% ao mês após entrega
+  function valorProjetadoNaData(numParcela: number): number {
+    const dataVenc = dataVencimento(numParcela)
+    const hoje = new Date()
+
+    // Meses até o vencimento original
+    const mesesAteCub = Math.max(0,
+      (dataVenc.getFullYear() - hoje.getFullYear()) * 12 +
+      (dataVenc.getMonth() - hoje.getMonth())
+    )
+
+    // CUB projetado na data de vencimento
+    const cubNaData = cubEfetivoValor * Math.pow(1 + crescCUB / 100, mesesAteCub)
+
+    // Parcela base pelo CUB projetado
+    const parcelaBase = CUBS * cubNaData
+
+    // Se for após a entrega, aplica +1% ao mês
+    if (dataVenc > DATA_ENTREGA) {
+      const mesesAposEntrega = Math.max(0,
+        (dataVenc.getFullYear() - DATA_ENTREGA.getFullYear()) * 12 +
+        (dataVenc.getMonth() - DATA_ENTREGA.getMonth())
+      )
+      return parseFloat((parcelaBase * Math.pow(1.01, mesesAposEntrega)).toFixed(2))
+    }
+
+    return parseFloat(parcelaBase.toFixed(2))
+  }
+
+  // Valor se pagar HOJE (CUB atual, sem juros pois ainda não entregou)
+  function valorHoje(numParcela: number): number {
+    const dataVenc = dataVencimento(numParcela)
+    // Se for após entrega, ainda sim paga hoje sem o 1% (adiantando antes da entrega)
+    return parseFloat((CUBS * cubEfetivoValor).toFixed(2))
+  }
+
+  interface LinhaSimulacao {
+    numero: number
+    dataVencimento: Date
+    jaAdiantada: boolean
+    jaPaga: boolean
+    valorHoje: number
+    valorProjetado: number
+    economia: number
+    aposEntrega: boolean
+    mesesAposEntrega: number
+  }
+
+  // Gera todas as parcelas restantes ordenadas de trás pra frente (mais caras primeiro)
+  const todasRestantes: LinhaSimulacao[] = []
+  for (let n = imovel.total_parcelas; n >= 1; n--) {
+    const jaAdiantada = parcelasAdiantadas.some(p => p.numero_parcela === n)
+    const jaPagaNorm  = parcelasNormais.some(p => p.numero_parcela === n)
+    const dataVenc    = dataVencimento(n)
+    const aposEntrega = dataVenc > DATA_ENTREGA
+    const mesesAposEntrega = aposEntrega ? Math.max(0,
+      (dataVenc.getFullYear() - DATA_ENTREGA.getFullYear()) * 12 +
+      (dataVenc.getMonth() - DATA_ENTREGA.getMonth())
+    ) : 0
+    const vh = valorHoje(n)
+    const vp = valorProjetadoNaData(n)
+
+    todasRestantes.push({
+      numero: n,
+      dataVencimento: dataVenc,
+      jaAdiantada,
+      jaPaga: jaPagaNorm,
+      valorHoje: vh,
+      valorProjetado: vp,
+      economia: parseFloat(Math.max(0, vp - vh).toFixed(2)),
+      aposEntrega,
+      mesesAposEntrega,
+    })
+  }
+
+  const aindaNaoAdiantadas = todasRestantes.filter(p => !p.jaAdiantada && !p.jaPaga)
+  const totalEconomiaPotencial = aindaNaoAdiantadas.reduce((s, p) => s + p.economia, 0)
+  const totalSeAdiantarTudo = aindaNaoAdiantadas.reduce((s, p) => s + p.valorHoje, 0)
+
+  const fmtMes = (d: Date) => d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+      <div className="p-5 border-b border-slate-50">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Calculator size={16}/></div>
+            <div>
+              <div className="text-sm font-black text-slate-700">Simulador de Adiantamento — De Trás pra Frente</div>
+              <div className="text-xs text-slate-400">Parcelas ordenadas da mais cara pra mais barata · Clique para ver detalhes</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 bg-slate-50 rounded-xl px-3 py-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">CUB % /mês:</label>
+            <input type="range" min={0} max={2} step={0.1} value={crescCUB}
+              onChange={e => setCrescCUB(parseFloat(e.target.value))}
+              className="w-24 accent-emerald-600" />
+            <span className="text-sm font-black text-emerald-600 w-10">{crescCUB.toFixed(1)}%</span>
+          </div>
+        </div>
+
+        {/* Cards de resumo */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+            <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">Economia potencial total</div>
+            <div className="text-xl font-black text-emerald-700">{totalEconomiaPotencial.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+            <div className="text-[10px] text-emerald-400">adiantando tudo hoje</div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+            <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">Custo total se adiantar tudo</div>
+            <div className="text-xl font-black text-blue-700">{totalSeAdiantarTudo.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+            <div className="text-[10px] text-blue-400">{aindaNaoAdiantadas.length} parcelas restantes</div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+            <div className="text-[10px] font-black text-amber-400 uppercase tracking-wider">Já adiantadas</div>
+            <div className="text-xl font-black text-amber-700">{parcelasAdiantadas.length}</div>
+            <div className="text-[10px] text-amber-400">parcelas pagas antecipado</div>
+          </div>
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-center">
+            <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">Parcelas após entrega</div>
+            <div className="text-xl font-black text-rose-700">{todasRestantes.filter(p => p.aposEntrega && !p.jaAdiantada && !p.jaPaga).length}</div>
+            <div className="text-[10px] text-rose-400">com +1%/mês acumulado</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabela linha por linha */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-white z-10">
+            <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b-2 border-slate-100">
+              <th className="text-left px-4 py-3">Parcela</th>
+              <th className="text-left px-3 py-3">Vencimento original</th>
+              <th className="text-right px-3 py-3">Valor hoje</th>
+              <th className="text-right px-3 py-3">Valor projetado</th>
+              <th className="text-right px-3 py-3">Economia</th>
+              <th className="text-center px-3 py-3">Status</th>
+              <th className="text-center px-3 py-3">Info</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {todasRestantes.map(p => (
+              <tr key={p.numero}
+                className={`transition-colors ${
+                  p.jaAdiantada ? 'bg-amber-50/60' :
+                  p.jaPaga ? 'bg-slate-50/60 opacity-50' :
+                  p.aposEntrega ? 'hover:bg-rose-50/40' :
+                  'hover:bg-emerald-50/40'
+                }`}>
+                <td className="px-4 py-2.5">
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
+                    p.jaAdiantada ? 'bg-amber-100 text-amber-700' :
+                    p.jaPaga ? 'bg-slate-100 text-slate-400' :
+                    p.aposEntrega ? 'bg-rose-100 text-rose-700' :
+                    'bg-slate-100 text-slate-600'
+                  }`}>
+                    #{p.numero}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-slate-500">
+                  {fmtMes(p.dataVencimento)}
+                  {p.aposEntrega && (
+                    <span className="ml-1 text-[9px] text-rose-400 font-bold">+{p.mesesAposEntrega}m após entrega</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-right font-bold text-slate-700">
+                  {p.valorHoje.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                </td>
+                <td className="px-3 py-2.5 text-right font-bold text-rose-600">
+                  {p.valorProjetado.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  {p.jaPaga || p.jaAdiantada ? (
+                    <span className="text-slate-300">—</span>
+                  ) : (
+                    <span className={`font-black ${p.economia > 200 ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                      +{p.economia.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  {p.jaAdiantada ? (
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[9px] font-bold">✓ Adiantada</span>
+                  ) : p.jaPaga ? (
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded-full text-[9px] font-bold">✓ Paga</span>
+                  ) : p.aposEntrega ? (
+                    <span className="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[9px] font-bold">Pós-entrega</span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full text-[9px] font-bold">Pendente</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  {!p.jaPaga && (
+                    <button onClick={() => setModalParcela(p)}
+                      className="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors">
+                      <ChevronDown size={12}/>
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal de detalhe da parcela */}
+      {modalParcela && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={`p-2 rounded-lg ${modalParcela.jaAdiantada ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                  <Calculator size={18}/>
+                </div>
+                <div>
+                  <div className="text-sm font-black text-slate-800">Parcela #{modalParcela.numero}</div>
+                  <div className="text-xs text-slate-400">Simulação de adiantamento</div>
+                </div>
+              </div>
+              <button onClick={() => setModalParcela(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16}/></button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-4 bg-slate-50 rounded-xl space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Vencimento original:</span>
+                  <span className="font-bold text-slate-700">{fmtMes(modalParcela.dataVencimento)}</span>
+                </div>
+                {modalParcela.aposEntrega && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Meses após entrega:</span>
+                    <span className="font-bold text-rose-600">{modalParcela.mesesAposEntrega} meses → +{(Math.pow(1.01, modalParcela.mesesAposEntrega) - 1).toFixed(2).replace('.', ',')}% de juros</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500">CUB hoje:</span>
+                  <span className="font-bold text-slate-700">{cubEfetivoValor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">CUB projetado no venc.:</span>
+                  <span className="font-bold text-amber-600">
+                    {(cubEfetivoValor * Math.pow(1 + crescCUB/100,
+                      Math.max(0,
+                        (modalParcela.dataVencimento.getFullYear() - new Date().getFullYear()) * 12 +
+                        (modalParcela.dataVencimento.getMonth() - new Date().getMonth())
+                      )
+                    )).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+                  <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">Se pagar HOJE</div>
+                  <div className="text-xl font-black text-emerald-700">
+                    {modalParcela.valorHoje.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                  </div>
+                  <div className="text-[10px] text-emerald-400">CUB atual × {CUBS} CUBs</div>
+                </div>
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-center">
+                  <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">No vencimento original</div>
+                  <div className="text-xl font-black text-rose-700">
+                    {modalParcela.valorProjetado.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                  </div>
+                  <div className="text-[10px] text-rose-400">
+                    CUB projetado{modalParcela.aposEntrega ? ` + ${modalParcela.mesesAposEntrega}x1%` : ''}
+                  </div>
+                </div>
+              </div>
+
+              {!modalParcela.jaAdiantada && (
+                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl p-4 text-white text-center">
+                  <div className="text-xs font-bold text-emerald-100 uppercase tracking-wider mb-1">💰 Economia adiantando hoje</div>
+                  <div className="text-3xl font-black">
+                    {modalParcela.economia.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                  </div>
+                  <div className="text-xs text-emerald-200 mt-1">
+                    {modalParcela.aposEntrega
+                      ? `Evita CUB maior + ${modalParcela.mesesAposEntrega} meses de juros de 1%/mês`
+                      : `Evita a correção do CUB pelos próximos meses`}
+                  </div>
+                </div>
+              )}
+
+              {modalParcela.jaAdiantada && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                  <div className="text-sm font-black text-amber-700">✓ Esta parcela já foi adiantada!</div>
+                  <div className="text-xs text-amber-500 mt-1">Confira a aba "Parcelas Adiantadas" para ver a economia real gerada.</div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button onClick={() => setModalParcela(null)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Projeção CUB até Entrega ──────────────────────────────────────────────────
+
+function ProjecaoCUB({ historicoCub, imovel, parcelas, cubEfetivoValor, valorAtualizado, cubsRestantesEscritura }: {
+  historicoCub: CubRegistro[]
+  imovel: Imovel
+  parcelas: Parcela[]
+  cubEfetivoValor: number
+  valorAtualizado: number
+  cubsRestantesEscritura: number
+}) {
+  // Calcula média de crescimento mensal do CUB com base no histórico
+  const sorted = [...historicoCub].sort((a,b) => a.data_registro.localeCompare(b.data_registro))
+  const crescimentos = sorted.slice(1).map((c, i) => {
+    const anterior = sorted[i].valor_cub
+    return (c.valor_cub - anterior) / anterior * 100
+  }).filter(v => v > 0)
+  const mediaCrescimento = crescimentos.length > 0
+    ? crescimentos.reduce((s,v) => s+v, 0) / crescimentos.length
+    : 0.8
+
+  const mesesEntrega = Math.max(0,
+    (new Date(imovel.data_entrega_chaves).getFullYear() - new Date().getFullYear()) * 12 +
+    (new Date(imovel.data_entrega_chaves).getMonth() - new Date().getMonth())
+  )
+
+  const parcelasNormais = parcelas.filter(p => !p.adiantada)
+  const parcelasAdiantadas = parcelas.filter(p => p.adiantada)
+  const parcelasRestantes = imovel.total_parcelas - parcelasNormais.length - parcelasAdiantadas.length
+
+  // Projeta CUB mês a mês
+  const projecao: { mes: number; cubProjetado: number; parcela: number }[] = []
+  let cubProj = cubEfetivoValor
+  for (let i = 1; i <= mesesEntrega; i++) {
+    cubProj = cubProj * (1 + mediaCrescimento / 100)
+    projecao.push({
+      mes: i,
+      cubProjetado: cubProj,
+      parcela: imovel.parcelas_cubs * cubProj,
+    })
+  }
+
+  const cubNaEntrega = projecao[projecao.length - 1]?.cubProjetado ?? cubEfetivoValor
+  const escrituraNaEntrega = cubsRestantesEscritura * cubNaEntrega
+  const parcelasRestFuturas = Math.min(parcelasRestantes, mesesEntrega)
+  const totalParcelasFuturas = projecao.slice(0, parcelasRestFuturas).reduce((s,p) => s+p.parcela, 0)
+  const totalFinalEstimado = totalParcelasFuturas + escrituraNaEntrega
+  const totalCubs = imovel.valor_original / imovel.cub_referencia_original
+  const valorImovNaEntrega = totalCubs * cubNaEntrega
+
+  // SVG mini gráfico
+  const W = 500, H = 120, PAD = { top: 10, right: 10, bottom: 25, left: 55 }
+  const maxCub = Math.max(...projecao.map(p => p.cubProjetado))
+  const minCub = cubEfetivoValor * 0.99
+  const xS = (i: number) => PAD.left + (i / Math.max(projecao.length - 1, 1)) * (W - PAD.left - PAD.right)
+  const yS = (v: number) => PAD.top + (H - PAD.top - PAD.bottom) * (1 - (v - minCub) / (maxCub - minCub))
+  const pathProj = projecao.map((p, i) => `${i===0?'M':'L'} ${xS(i)} ${yS(p.cubProjetado)}`).join(' ')
+  const labelsX = projecao.filter((_, i) => i % Math.ceil(projecao.length/5) === 0 || i === projecao.length-1)
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+      <div className="p-5 border-b border-slate-50 flex items-center gap-2">
+        <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><TrendingUp size={16}/></div>
+        <div>
+          <div className="text-sm font-black text-slate-700">Projeção do CUB até Dezembro/2027</div>
+          <div className="text-xs text-slate-400">Baseada na média histórica de +{mediaCrescimento.toFixed(2)}%/mês dos seus {sorted.length} registros</div>
+        </div>
+      </div>
+      <div className="p-5 space-y-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center space-y-0.5">
+            <div className="text-[10px] font-black text-amber-400 uppercase tracking-wider">CUB Hoje</div>
+            <div className="text-lg font-black text-amber-700">{cubEfetivoValor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+          </div>
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center space-y-0.5">
+            <div className="text-[10px] font-black text-orange-400 uppercase tracking-wider">CUB na Entrega</div>
+            <div className="text-lg font-black text-orange-700">{cubNaEntrega.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+            <div className="text-[10px] text-orange-400">em {mesesEntrega} meses</div>
+          </div>
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-center space-y-0.5">
+            <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">Escritura estimada</div>
+            <div className="text-lg font-black text-rose-700">{escrituraNaEntrega.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+            <div className="text-[10px] text-rose-400">{cubsRestantesEscritura.toFixed(4)} CUBs</div>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center space-y-0.5">
+            <div className="text-[10px] font-black text-purple-400 uppercase tracking-wider">Imóvel valerá</div>
+            <div className="text-lg font-black text-purple-700">{valorImovNaEntrega.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+            <div className="text-[10px] text-purple-400">pelo CUB projetado</div>
+          </div>
+        </div>
+
+        {/* Mini gráfico da projeção */}
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{maxHeight:130}}>
+          <defs>
+            <linearGradient id="gradProj" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#f59e0b"/>
+              <stop offset="100%" stopColor="#ef4444"/>
+            </linearGradient>
+          </defs>
+          {[0,50,100].map(pct => {
+            const v = minCub + (maxCub - minCub) * (pct/100)
+            return (
+              <g key={pct}>
+                <line x1={PAD.left} y1={yS(v)} x2={W-PAD.right} y2={yS(v)} stroke="#f8fafc" strokeWidth="1"/>
+                <text x={PAD.left-4} y={yS(v)+3} textAnchor="end" fontSize="8" fill="#94a3b8">{v.toFixed(0)}</text>
+              </g>
+            )
+          })}
+          <path d={pathProj} fill="none" stroke="url(#gradProj)" strokeWidth="2.5"/>
+          {labelsX.map((p,i) => (
+            <text key={i} x={xS(p.mes-1)} y={H-5} textAnchor="middle" fontSize="8" fill="#94a3b8">
+              +{p.mes}m
+            </text>
+          ))}
+          <circle cx={xS(projecao.length-1)} cy={yS(projecao[projecao.length-1]?.cubProjetado??0)} r="4" fill="#ef4444"/>
+        </svg>
+
+        <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500 flex items-start gap-2">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0 text-amber-400"/>
+          Projeção baseada na média histórica de crescimento do CUB dos seus registros. O CUB real pode variar.
+          Para preparar a reserva da escritura, considere um valor entre {(escrituraNaEntrega * 0.9).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} e {(escrituraNaEntrega * 1.1).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Histórico de Economia Acumulada ──────────────────────────────────────────
+
+function HistoricoEconomia({ parcelas, cubEfetivoValor, imovel }: {
+  parcelas: Parcela[]
+  cubEfetivoValor: number
+  imovel: Imovel
+}) {
+  const adiantadas = [...parcelas.filter(p => p.adiantada)]
+    .sort((a,b) => a.data_pagamento.localeCompare(b.data_pagamento))
+
+  if (adiantadas.length === 0) return (
+    <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Award size={16}/></div>
+        <div className="text-sm font-black text-slate-700">Histórico de Economia Acumulada</div>
+      </div>
+      <div className="text-center py-6 text-slate-400 text-xs">Nenhuma parcela adiantada registrada ainda.</div>
+    </div>
+  )
+
+  const parcelaHoje = calcularParcela(imovel.parcelas_cubs, cubEfetivoValor)
+
+  // Acumula economia por data
+  let acumulado = 0
+  const dados = adiantadas.map(p => {
+    const economia = Math.max(0, parcelaHoje - p.valor_pago)
+    acumulado += economia
+    return {
+      data: p.data_pagamento,
+      parcela: p.numero_parcela,
+      pago: p.valor_pago,
+      economia,
+      acumulado,
+    }
+  })
+
+  const totalEconomia = acumulado
+  const maiorEconomia = Math.max(...dados.map(d => d.economia))
+
+  // SVG barras
+  const W = 500, H = 120, PAD = { top: 10, right: 10, bottom: 30, left: 10 }
+  const barW = Math.min(30, (W - PAD.left - PAD.right) / dados.length - 4)
+  const barGap = (W - PAD.left - PAD.right) / dados.length
+  const yS = (v: number) => H - PAD.bottom - (v / maiorEconomia) * (H - PAD.top - PAD.bottom)
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+      <div className="p-5 border-b border-slate-50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Award size={16}/></div>
+          <div>
+            <div className="text-sm font-black text-slate-700">Histórico de Economia Acumulada</div>
+            <div className="text-xs text-slate-400">Economia real gerada por cada parcela adiantada</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-emerald-500 font-bold uppercase tracking-wider">Total economizado</div>
+          <div className="text-xl font-black text-emerald-600">{totalEconomia.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+        </div>
+      </div>
+      <div className="p-5 space-y-4">
+        {/* Gráfico de barras */}
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{maxHeight:130}}>
+          {dados.map((d, i) => {
+            const x = PAD.left + i * barGap + barGap/2 - barW/2
+            const y = yS(d.economia)
+            const barH = H - PAD.bottom - y
+            return (
+              <g key={i}>
+                <rect x={x} y={y} width={barW} height={barH}
+                  fill="#10b981" rx="3" opacity="0.85"/>
+                <text x={x + barW/2} y={H - PAD.bottom + 10} textAnchor="middle" fontSize="8" fill="#94a3b8">
+                  #{d.parcela}
+                </text>
+                <text x={x + barW/2} y={y - 3} textAnchor="middle" fontSize="7" fill="#10b981" fontWeight="bold">
+                  {d.economia.toFixed(0)}
+                </text>
+              </g>
+            )
+          })}
+          {/* Linha acumulado */}
+          {dados.map((d, i) => {
+            const x = PAD.left + i * barGap + barGap/2
+            const y = H - PAD.bottom - (d.acumulado / totalEconomia) * (H - PAD.top - PAD.bottom) * 0.7
+            return i === 0
+              ? <circle key={`dot${i}`} cx={x} cy={y} r="3" fill="#6366f1"/>
+              : <line key={`line${i}`}
+                  x1={PAD.left + (i-1) * barGap + barGap/2}
+                  y1={H - PAD.bottom - (dados[i-1].acumulado / totalEconomia) * (H - PAD.top - PAD.bottom) * 0.7}
+                  x2={x} y2={y}
+                  stroke="#6366f1" strokeWidth="1.5" strokeDasharray="3,2"/>
+          })}
+        </svg>
+
+        {/* Tabela resumo */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
+                <th className="text-left py-2 pr-3">Parcela</th>
+                <th className="text-left py-2 pr-3">Data</th>
+                <th className="text-right py-2 pr-3">Pago</th>
+                <th className="text-right py-2 pr-3">Valor hoje</th>
+                <th className="text-right py-2 pr-3">Economia</th>
+                <th className="text-right py-2">Acumulado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {dados.map(d => (
+                <tr key={d.parcela} className="hover:bg-slate-50/60">
+                  <td className="py-2 pr-3 font-bold text-amber-600">#{d.parcela}</td>
+                  <td className="py-2 pr-3 text-slate-400">{new Date(d.data+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td className="py-2 pr-3 text-right text-slate-600">{d.pago.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                  <td className="py-2 pr-3 text-right text-slate-400">{parcelaHoje.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                  <td className="py-2 pr-3 text-right font-bold text-emerald-600">+{d.economia.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                  <td className="py-2 text-right font-black text-indigo-600">{d.acumulado.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Comparativo Real vs Financiamento ────────────────────────────────────────
+
+function ComparativoReal({ imovel, totalPago, parcelas, reforcos, taxaAnual, taxaSelecionada, valorAtualizado }: {
+  imovel: Imovel
+  totalPago: number
+  parcelas: Parcela[]
+  reforcos: Reforco[]
+  taxaAnual: number
+  taxaSelecionada: { label: string; taxa: number }
+  valorAtualizado: number
+}) {
+  // Simula financiamento bancário real: SAC ou Price
+  const [sistema, setSistema] = useState<'SAC' | 'PRICE'>('SAC')
+  const valorFinanciado = imovel.valor_original
+  const nParcelas = imovel.total_parcelas // 100 meses
+  const taxaMensal = Math.pow(1 + taxaAnual / 100, 1/12) - 1
+
+  // Sistema SAC
+  const amortizacaoSAC = valorFinanciado / nParcelas
+  let saldoSAC = valorFinanciado
+  let totalPagoSAC = 0
+  let totalJurosSAC = 0
+  const parcelasSAC: number[] = []
+  for (let i = 0; i < nParcelas; i++) {
+    const juros = saldoSAC * taxaMensal
+    const parcela = amortizacaoSAC + juros
+    parcelasSAC.push(parcela)
+    totalPagoSAC += parcela
+    totalJurosSAC += juros
+    saldoSAC -= amortizacaoSAC
+  }
+  const primeiraSAC = parcelasSAC[0] ?? 0
+  const ultimaSAC = parcelasSAC[nParcelas - 1] ?? 0
+
+  // Sistema Price
+  const parcelaPrice = taxaMensal > 0
+    ? valorFinanciado * (taxaMensal * Math.pow(1+taxaMensal, nParcelas)) / (Math.pow(1+taxaMensal, nParcelas) - 1)
+    : valorFinanciado / nParcelas
+  const totalPagoPrice = parcelaPrice * nParcelas
+  const totalJurosPrice = totalPagoPrice - valorFinanciado
+
+  // Custo total real do CUB (o que você pagou + vai pagar)
+  const totalCubsOriginal = imovel.valor_original / imovel.cub_referencia_original
+  const totalCubCusto = valorAtualizado // valor atualizado pelo CUB = custo total
+
+  // Economia real
+  const economiaSAC = totalPagoSAC - totalCubCusto
+  const economiaPrice = totalPagoPrice - totalCubCusto
+
+  const fmt2 = (v: number) => v.toLocaleString('pt-BR', {style:'currency',currency:'BRL'})
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+      <div className="p-5 border-b border-slate-50 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <div className="p-2 bg-rose-100 text-rose-600 rounded-lg"><TrendingDown size={16}/></div>
+          <div>
+            <div className="text-sm font-black text-slate-700">Comparativo Real: CUB vs Financiamento Bancário</div>
+            <div className="text-xs text-slate-400">Quanto custaria o mesmo imóvel financiado pelo banco — {taxaSelecionada.label} · {taxaAnual.toFixed(2)}% a.a.</div>
+          </div>
+        </div>
+        <div className="flex gap-1.5">
+          {(['SAC','PRICE'] as const).map(s => (
+            <button key={s} onClick={() => setSistema(s)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${sistema===s ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-500 border-slate-200'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="p-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* CUB */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 space-y-2">
+            <div className="text-xs font-black text-indigo-500 uppercase tracking-wider">✓ Seu contrato (CUB)</div>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Valor original:</span>
+                <span className="font-bold text-slate-700">{fmt2(imovel.valor_original)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Correção total (CUB):</span>
+                <span className="font-bold text-amber-600">+{fmt2(valorAtualizado - imovel.valor_original)}</span>
+              </div>
+              <div className="flex justify-between border-t border-indigo-200 pt-1.5">
+                <span className="font-bold text-slate-700">Total estimado:</span>
+                <span className="font-black text-indigo-700">{fmt2(totalCubCusto)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Parcela atual:</span>
+                <span className="font-bold text-indigo-600">{fmt2(calcularParcela(imovel.parcelas_cubs, 3096.25))}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Financiamento SAC/Price */}
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-2">
+            <div className="text-xs font-black text-rose-500 uppercase tracking-wider">✗ Financiamento {sistema}</div>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Valor financiado:</span>
+                <span className="font-bold text-slate-700">{fmt2(valorFinanciado)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Total de juros:</span>
+                <span className="font-bold text-rose-600">+{fmt2(sistema==='SAC' ? totalJurosSAC : totalJurosPrice)}</span>
+              </div>
+              <div className="flex justify-between border-t border-rose-200 pt-1.5">
+                <span className="font-bold text-slate-700">Total pago:</span>
+                <span className="font-black text-rose-700">{fmt2(sistema==='SAC' ? totalPagoSAC : totalPagoPrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">1ª parcela:</span>
+                <span className="font-bold text-rose-600">{fmt2(sistema==='SAC' ? primeiraSAC : parcelaPrice)}</span>
+              </div>
+              {sistema==='SAC' && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Última parcela:</span>
+                  <span className="font-bold text-rose-400">{fmt2(ultimaSAC)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Economia */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
+            <div className="text-xs font-black text-emerald-500 uppercase tracking-wider">💰 Você economizou</div>
+            <div className="text-3xl font-black text-emerald-700">
+              {fmt2(sistema==='SAC' ? economiaSAC : economiaPrice)}
+            </div>
+            <div className="text-xs text-emerald-500">
+              vs financiamento {sistema} · {taxaAnual.toFixed(2)}% a.a.
+            </div>
+            <div className="text-[10px] text-emerald-400 mt-1">
+              = {((sistema==='SAC' ? economiaSAC : economiaPrice) / imovel.valor_original * 100).toFixed(1)}% do valor original do imóvel
+            </div>
+            <div className="mt-2 p-2 bg-emerald-100 rounded-lg text-[10px] text-emerald-700 font-bold">
+              Comprando via construtora com CUB, você evitou pagar {fmt2(sistema==='SAC' ? totalJurosSAC : totalJurosPrice)} só em juros bancários.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ─── Aba Simulador de Adiantamento ───────────────────────────────────────────
+
+function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
+  imovel: Imovel
+  parcelas: Parcela[]
+  cubEfetivoValor: number
+  reforcos: Reforco[]
+}) {
+  const [crescCUB, setCrescCUB] = useState(0.8)
+  const [modalDetalhe, setModalDetalhe] = useState<LinhaSimul | null>(null)
+
+  const DATA_ENTREGA = new Date('2027-12-10T12:00:00')
+  const DATA_INICIO  = new Date('2022-12-10T12:00:00')
+  const CUBS         = imovel.parcelas_cubs
+
+  const parcelasNormais    = parcelas.filter(p => !p.adiantada)
+  const parcelasAdiantadas = parcelas.filter(p => p.adiantada)
+
+  function dataVencimento(n: number): Date {
+    const d = new Date(DATA_INICIO)
+    d.setMonth(d.getMonth() + n - 1)
+    return d
+  }
+
+  function valorProjetadoNaData(n: number): number {
+    const dataVenc = dataVencimento(n)
+    const hoje = new Date()
+    const mesesAteCub = Math.max(0,
+      (dataVenc.getFullYear() - hoje.getFullYear()) * 12 +
+      (dataVenc.getMonth() - hoje.getMonth())
+    )
+    const cubNaData = cubEfetivoValor * Math.pow(1 + crescCUB / 100, mesesAteCub)
+    const parcelaBase = CUBS * cubNaData
+    if (dataVenc > DATA_ENTREGA) {
+      const mAfEntrega = Math.max(0,
+        (dataVenc.getFullYear() - DATA_ENTREGA.getFullYear()) * 12 +
+        (dataVenc.getMonth() - DATA_ENTREGA.getMonth())
+      )
+      return parseFloat((parcelaBase * Math.pow(1.01, mAfEntrega)).toFixed(2))
+    }
+    return parseFloat(parcelaBase.toFixed(2))
+  }
+
+  interface LinhaSimul {
+    numero: number
+    dataVenc: Date
+    jaPaga: boolean
+    jaAdiantada: boolean
+    valorPagoReal: number | null   // valor que realmente saiu do bolso
+    valorHoje: number              // CUB atual × CUBS (se adiantar hoje)
+    valorProjetado: number         // valor projetado no vencimento original
+    economiaSePagoHoje: number     // projetado - hoje (para pendentes)
+    economiaJaObtida: number       // projetado - pago real (para adiantadas)
+    aposEntrega: boolean
+    mAfEntrega: number
+  }
+
+  const linhas: LinhaSimul[] = []
+  for (let n = imovel.total_parcelas; n >= 1; n--) {
+    const adiantada = parcelasAdiantadas.find(p => p.numero_parcela === n)
+    const normal    = parcelasNormais.find(p => p.numero_parcela === n)
+    const dataVenc  = dataVencimento(n)
+    const aposEntrega = dataVenc > DATA_ENTREGA
+    const mAfEntrega = aposEntrega ? Math.max(0,
+      (dataVenc.getFullYear() - DATA_ENTREGA.getFullYear()) * 12 +
+      (dataVenc.getMonth() - DATA_ENTREGA.getMonth())
+    ) : 0
+    const vHoje     = parseFloat((CUBS * cubEfetivoValor).toFixed(2))
+    const vProj     = valorProjetadoNaData(n)
+    const vPagoReal = adiantada?.valor_pago ?? normal?.valor_pago ?? null
+
+    linhas.push({
+      numero: n,
+      dataVenc,
+      jaPaga: !!normal,
+      jaAdiantada: !!adiantada,
+      valorPagoReal: vPagoReal,
+      valorHoje: vHoje,
+      valorProjetado: vProj,
+      economiaSePagoHoje: parseFloat(Math.max(0, vProj - vHoje).toFixed(2)),
+      economiaJaObtida: adiantada
+        ? parseFloat(Math.max(0, vProj - adiantada.valor_pago).toFixed(2))
+        : 0,
+      aposEntrega,
+      mAfEntrega,
+    })
+  }
+
+  const pendentes   = linhas.filter(l => !l.jaPaga && !l.jaAdiantada)
+  const adiantadas  = linhas.filter(l => l.jaAdiantada)
+  const normaisPagas = linhas.filter(l => l.jaPaga)
+
+  const totalEconomiaPotencial = pendentes.reduce((s, l) => s + l.economiaSePagoHoje, 0)
+  const totalEconomiaJaObtida  = adiantadas.reduce((s, l) => s + l.economiaJaObtida, 0)
+  const totalSeAdiantarTudo    = pendentes.reduce((s, l) => s + l.valorHoje, 0)
+
+  const fmt2 = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const fmtMes = (d: Date) => d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+
+  return (
+    <div className="p-6 space-y-5">
+
+      {/* Controle CUB */}
+      <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Calculator size={15}/></div>
+          <div>
+            <div className="text-sm font-black text-slate-700">Simulador de Adiantamento — De Trás pra Frente</div>
+            <div className="text-xs text-slate-400">Parcelas das mais caras (pós-entrega) para as mais baratas</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 bg-slate-50 rounded-xl px-3 py-2 ml-auto">
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">CUB % /mês:</label>
+          <input type="range" min={0} max={2} step={0.1} value={crescCUB}
+            onChange={e => setCrescCUB(parseFloat(e.target.value))}
+            className="w-24 accent-emerald-600" />
+          <span className="text-sm font-black text-emerald-600 w-10">{crescCUB.toFixed(1)}%</span>
+        </div>
+      </div>
+
+      {/* Cards resumo */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center space-y-1">
+          <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">Economia já obtida</div>
+          <div className="text-xl font-black text-emerald-700">{fmt2(totalEconomiaJaObtida)}</div>
+          <div className="text-[10px] text-emerald-400">{adiantadas.length} parcelas adiantadas</div>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center space-y-1">
+          <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">Economia potencial restante</div>
+          <div className="text-xl font-black text-blue-700">{fmt2(totalEconomiaPotencial)}</div>
+          <div className="text-[10px] text-blue-400">{pendentes.length} pendentes</div>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-1">
+          <div className="text-[10px] font-black text-amber-400 uppercase tracking-wider">Custo p/ adiantar tudo</div>
+          <div className="text-xl font-black text-amber-700">{fmt2(totalSeAdiantarTudo)}</div>
+          <div className="text-[10px] text-amber-400">CUB atual × {pendentes.length} parcelas</div>
+        </div>
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-center space-y-1">
+          <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">Parcelas pós-entrega</div>
+          <div className="text-xl font-black text-rose-700">{pendentes.filter(l => l.aposEntrega).length}</div>
+          <div className="text-[10px] text-rose-400">com +1%/mês acumulado</div>
+        </div>
+      </div>
+
+      {/* Tabela completa */}
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-white z-10">
+              <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b-2 border-slate-100">
+                <th className="text-left px-4 py-3">Parcela</th>
+                <th className="text-left px-3 py-3">Vencimento</th>
+                <th className="text-right px-3 py-3">Valor pago / hoje</th>
+                <th className="text-right px-3 py-3">Valor projetado</th>
+                <th className="text-right px-3 py-3">Economia</th>
+                <th className="text-center px-3 py-3">Status</th>
+                <th className="text-center px-3 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {linhas.map(l => (
+                <tr key={l.numero} className={`transition-colors ${
+                  l.jaAdiantada ? 'bg-amber-50/50 hover:bg-amber-50' :
+                  l.jaPaga      ? 'bg-slate-50/40 opacity-60' :
+                  l.aposEntrega ? 'hover:bg-rose-50/30' :
+                                  'hover:bg-emerald-50/30'
+                }`}>
+                  {/* Nº */}
+                  <td className="px-4 py-2.5">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
+                      l.jaAdiantada ? 'bg-amber-100 text-amber-700' :
+                      l.jaPaga      ? 'bg-slate-100 text-slate-400' :
+                      l.aposEntrega ? 'bg-rose-100 text-rose-700' :
+                                      'bg-slate-100 text-slate-600'
+                    }`}>#{l.numero}</span>
+                  </td>
+
+                  {/* Vencimento */}
+                  <td className="px-3 py-2.5 text-slate-500">
+                    {fmtMes(l.dataVenc)}
+                    {l.aposEntrega && (
+                      <span className="ml-1 text-[9px] text-rose-400 font-bold">
+                        +{l.mAfEntrega}m pós-entrega
+                      </span>
+                    )}
+                  </td>
+
+                  {/* Valor pago real OU valor hoje */}
+                  <td className="px-3 py-2.5 text-right">
+                    {l.jaAdiantada && l.valorPagoReal !== null ? (
+                      <div>
+                        <div className="font-black text-amber-600">{fmt2(l.valorPagoReal)}</div>
+                        <div className="text-[9px] text-slate-400">pago em {l.dataVenc ? '' : ''}adiantado</div>
+                      </div>
+                    ) : l.jaPaga && l.valorPagoReal !== null ? (
+                      <div className="font-bold text-slate-400">{fmt2(l.valorPagoReal)}</div>
+                    ) : (
+                      <div>
+                        <div className="font-bold text-slate-700">{fmt2(l.valorHoje)}</div>
+                        <div className="text-[9px] text-slate-400">se pagar hoje</div>
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Valor projetado */}
+                  <td className="px-3 py-2.5 text-right">
+                    <div className="font-bold text-rose-600">{fmt2(l.valorProjetado)}</div>
+                    {l.aposEntrega && (
+                      <div className="text-[9px] text-rose-300">
+                        CUB + {((Math.pow(1.01, l.mAfEntrega) - 1) * 100).toFixed(1)}% juros
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Economia */}
+                  <td className="px-3 py-2.5 text-right">
+                    {l.jaAdiantada ? (
+                      <div>
+                        <div className="font-black text-emerald-600">+{fmt2(l.economiaJaObtida)}</div>
+                        <div className="text-[9px] text-emerald-400">já economizado ✓</div>
+                      </div>
+                    ) : l.jaPaga ? (
+                      <span className="text-slate-300">—</span>
+                    ) : (
+                      <div>
+                        <div className={`font-black ${l.economiaSePagoHoje > 500 ? 'text-emerald-600' : l.economiaSePagoHoje > 100 ? 'text-emerald-500' : 'text-emerald-400'}`}>
+                          +{fmt2(l.economiaSePagoHoje)}
+                        </div>
+                        <div className="text-[9px] text-slate-400">se adiantar hoje</div>
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-3 py-2.5 text-center">
+                    {l.jaAdiantada ? (
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[9px] font-bold">✓ Adiantada</span>
+                    ) : l.jaPaga ? (
+                      <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded-full text-[9px] font-bold">✓ Paga</span>
+                    ) : l.aposEntrega ? (
+                      <span className="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[9px] font-bold">Pós-entrega</span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full text-[9px] font-bold">Pendente</span>
+                    )}
+                  </td>
+
+                  {/* Botão detalhe */}
+                  <td className="px-3 py-2.5 text-center">
+                    <button onClick={() => setModalDetalhe(l)}
+                      className="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors">
+                      <ChevronDown size={12}/>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {/* Totais */}
+            <tfoot className="border-t-2 border-slate-200 bg-slate-50 sticky bottom-0">
+              <tr>
+                <td colSpan={2} className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-wider">
+                  Resumo
+                </td>
+                <td className="px-3 py-3 text-right text-xs font-black text-slate-600">
+                  {fmt2(totalSeAdiantarTudo + adiantadas.reduce((s,l) => s + (l.valorPagoReal ?? 0), 0))}
+                </td>
+                <td className="px-3 py-3 text-right text-xs font-black text-rose-500">
+                  {fmt2(pendentes.reduce((s,l) => s + l.valorProjetado, 0) + adiantadas.reduce((s,l) => s + l.valorProjetado, 0))}
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <div className="text-xs font-black text-emerald-600">
+                    +{fmt2(totalEconomiaJaObtida + totalEconomiaPotencial)}
+                  </div>
+                  <div className="text-[9px] text-slate-400">total (já obtida + potencial)</div>
+                </td>
+                <td colSpan={2}/>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal detalhe */}
+      {modalDetalhe && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={`p-2 rounded-lg ${modalDetalhe.jaAdiantada ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                  <Calculator size={18}/>
+                </div>
+                <div>
+                  <div className="text-sm font-black text-slate-800">Parcela #{modalDetalhe.numero}</div>
+                  <div className="text-xs text-slate-400">
+                    {modalDetalhe.jaAdiantada ? 'Já adiantada ✓' : modalDetalhe.jaPaga ? 'Já paga ✓' : 'Simulação de adiantamento'}
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setModalDetalhe(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16}/></button>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-xl space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Vencimento original:</span>
+                <span className="font-bold text-slate-700">{fmtMes(modalDetalhe.dataVenc)}</span>
+              </div>
+              {modalDetalhe.aposEntrega && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Meses após entrega:</span>
+                    <span className="font-bold text-rose-600">{modalDetalhe.mAfEntrega} meses</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Juros acumulados (1%/mês):</span>
+                    <span className="font-bold text-rose-600">
+                      +{((Math.pow(1.01, modalDetalhe.mAfEntrega) - 1) * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                </>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-500">CUB atual:</span>
+                <span className="font-bold">{fmt2(cubEfetivoValor)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Crescimento CUB estimado:</span>
+                <span className="font-bold text-amber-600">{crescCUB.toFixed(1)}% /mês</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {modalDetalhe.jaAdiantada ? (
+                <>
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                    <div className="text-[10px] font-black text-amber-400 uppercase tracking-wider">Valor pago</div>
+                    <div className="text-xl font-black text-amber-700">{fmt2(modalDetalhe.valorPagoReal ?? 0)}</div>
+                    <div className="text-[10px] text-amber-400">valor real do bolso</div>
+                  </div>
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-center">
+                    <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">Custaria no vencimento</div>
+                    <div className="text-xl font-black text-rose-700">{fmt2(modalDetalhe.valorProjetado)}</div>
+                    <div className="text-[10px] text-rose-400">CUB projetado{modalDetalhe.aposEntrega ? ' + juros' : ''}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                    <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">Se pagar hoje</div>
+                    <div className="text-xl font-black text-blue-700">{fmt2(modalDetalhe.valorHoje)}</div>
+                    <div className="text-[10px] text-blue-400">CUB atual × {CUBS} CUBs</div>
+                  </div>
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-center">
+                    <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">No vencimento original</div>
+                    <div className="text-xl font-black text-rose-700">{fmt2(modalDetalhe.valorProjetado)}</div>
+                    <div className="text-[10px] text-rose-400">CUB projetado{modalDetalhe.aposEntrega ? ' + juros' : ''}</div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className={`rounded-xl p-4 text-white text-center ${modalDetalhe.jaAdiantada ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 'bg-gradient-to-r from-emerald-500 to-emerald-600'}`}>
+              <div className="text-xs font-bold text-white/70 uppercase tracking-wider mb-1">
+                {modalDetalhe.jaAdiantada ? '✓ Economia já obtida' : '💰 Economia se adiantar hoje'}
+              </div>
+              <div className="text-3xl font-black">
+                {fmt2(modalDetalhe.jaAdiantada ? modalDetalhe.economiaJaObtida : modalDetalhe.economiaSePagoHoje)}
+              </div>
+              {modalDetalhe.aposEntrega && !modalDetalhe.jaAdiantada && (
+                <div className="text-xs text-white/70 mt-1">
+                  Inclui economia de CUB + {((Math.pow(1.01, modalDetalhe.mAfEntrega) - 1) * 100).toFixed(1)}% de juros evitados
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button onClick={() => setModalDetalhe(null)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 // ─── Aba Análise & Comparativo ────────────────────────────────────────────────
 
 const TAXAS_MERCADO = [
@@ -842,6 +1961,34 @@ function AbaAnalise({ historicoCub, imovel, totalPago, valorAtualizado, parcelas
         )}
       </div>
 
+      {/* ── Projeção CUB até entrega ── */}
+      <ProjecaoCUB
+        historicoCub={historicoCub}
+        imovel={imovel}
+        parcelas={parcelas}
+        cubEfetivoValor={cubEfetivoValor}
+        valorAtualizado={valorAtualizado}
+        cubsRestantesEscritura={29.6215 - reforcos.filter((r:any)=>r.is_escritura).reduce((s:number,r:any)=>s+(Number(r.cubs_pagos)||0),0)}
+      />
+
+      {/* ── Histórico de Economia Acumulada ── */}
+      <HistoricoEconomia
+        parcelas={parcelas}
+        cubEfetivoValor={cubEfetivoValor}
+        imovel={imovel}
+      />
+
+      {/* ── Comparativo Real vs Financiamento ── */}
+      <ComparativoReal
+        imovel={imovel}
+        totalPago={totalPago}
+        parcelas={parcelas}
+        reforcos={reforcos}
+        taxaAnual={taxaAnual}
+        taxaSelecionada={taxaSelecionada}
+        valorAtualizado={valorAtualizado}
+      />
+
       {/* ── Análise ── */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-50 flex items-center justify-between">
@@ -904,7 +2051,7 @@ export default function Apartamento() {
   const [reforcos, setReforcos] = useState<Reforco[]>([])
   const [carregando, setCarregando] = useState(true)
 
-  const [aba, setAba] = useState<'normais' | 'adiantadas' | 'reforcos' | 'cub' | 'analise'>('normais')
+  const [aba, setAba] = useState<'normais' | 'adiantadas' | 'reforcos' | 'cub' | 'analise' | 'simulador'>('normais')
   const [paginaAtual, setPaginaAtual] = useState(1)
   const porPagina = 15
 
@@ -1195,6 +2342,7 @@ export default function Apartamento() {
               { key: 'reforcos',  label: `Reforços (${reforcos.length})` },
               { key: 'cub',       label: `Histórico CUB (${historicoCub.length})` },
               { key: 'analise',   label: '🧠 Análise & Comparativo' },
+              { key: 'simulador', label: '📊 Simulador de Adiantamento' },
             ] as const).map(a => (
               <button key={a.key} onClick={() => { setAba(a.key); setPaginaAtual(1) }}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${aba === a.key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
@@ -1214,6 +2362,15 @@ export default function Apartamento() {
         </div>
 
         <div className="overflow-x-auto">
+          {aba === 'simulador' && (
+            <AbaSimulador
+              imovel={imovel}
+              parcelas={parcelas}
+              cubEfetivoValor={cubEfetivoValor}
+              reforcos={reforcos}
+            />
+          )}
+
           {aba === 'analise' && (
             <AbaAnalise
               historicoCub={historicoCub}
