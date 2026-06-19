@@ -10,6 +10,7 @@ import PasswordGate from "./components/PasswordGate";
 import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
 import Consorcios from "./views/Consorcios";
 import Caixinhas from "./views/Caixinhas";
+import PrevidenciaPainel from "./views/PrevidenciaPainel";
 import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
@@ -177,9 +178,10 @@ export default function App() {
   ];
 
   const subItensInvestimento = [
-    { id: "acoes",      label: "Ações",     icon: <PieChart size={13}/> },
-    { id: "consorcios", label: "Consórcio", icon: <FileText size={13}/> },
-    { id: "caixinhas",  label: "Caixinhas", icon: <PiggyBank size={13}/> },
+    { id: "acoes",       label: "Ações",       icon: <PieChart size={13}/> },
+    { id: "consorcios",  label: "Consórcio",   icon: <FileText size={13}/> },
+    { id: "caixinhas",   label: "Caixinhas",   icon: <PiggyBank size={13}/> },
+    { id: "previdencia", label: "Previdência", icon: <Shield size={13}/> },
   ];
 
   // ← "Resumo" agora é o primeiro item do menu Pessoal
@@ -607,9 +609,10 @@ export default function App() {
           {abaAtiva === "pessoal" && subAbaPessoal === "entradas" && <EntradasPessoais />}
           {abaAtiva === "pessoal" && subAbaPessoal === "saidas"   && <SaidasPainel />}
           {/* ── Investimentos ── */}
-          {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"      && <CarteiraInvestimentos />}
-          {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios" && <Consorcios />}
-          {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"  && <Caixinhas />}
+          {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"       && <CarteiraInvestimentos />}
+          {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios"  && <Consorcios />}
+          {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"   && <Caixinhas />}
+          {abaAtiva === "investimentos" && subAbaInvestimento === "previdencia" && <PrevidenciaPainel />}
         </main>
       </div>
     </PasswordGate>
