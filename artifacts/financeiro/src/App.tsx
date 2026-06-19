@@ -3,6 +3,7 @@ import { supabase } from "./lib/supabaseClient";
 import ControleEmpresa from "./views/ControleEmpresa";
 import SaidasPainel from "./views/SaidasPainel";
 import EntradasPessoais from "./views/EntradasPessoais";
+import ResumoPessoal from "./views/ResumoPessoal";          // ← NOVO
 import CasaJardimMirante from "./views/CasaJardimMirante";
 import Apartamento from "./views/Apartamento";
 import PasswordGate from "./components/PasswordGate";
@@ -13,46 +14,46 @@ import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Shield, Target, Calendar,
-  ArrowRight, BedDouble, Trees, Building,
+  ArrowRight, BedDouble, Trees, BarChart2,             // ← BarChart2 para Resumo
 } from "lucide-react";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const MESES_CURTOS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const MESES_CURTOS    = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MESES_COMPLETOS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 const CUBS_ESCRITURA_TOTAL = 29.6215;
 
 export default function App() {
   const hoje = new Date();
-  const [abaAtiva, setAbaAtiva] = useState("geral");
+  const [abaAtiva, setAbaAtiva]                     = useState("geral");
   const [subAbaInvestimento, setSubAbaInvestimento] = useState("acoes");
-  const [subAbaPessoal, setSubAbaPessoal] = useState("saidas");
-  const [subAbaImovel, setSubAbaImovel] = useState("apartamento");
+  const [subAbaPessoal, setSubAbaPessoal]           = useState("resumo");   // ← padrão agora é resumo
+  const [subAbaImovel, setSubAbaImovel]             = useState("apartamento");
   const [menuInvestimentosAberto, setMenuInvestimentosAberto] = useState(false);
-  const [menuPessoalAberto, setMenuPessoalAberto] = useState(false);
-  const [menuImovelAberto, setMenuImovelAberto] = useState(false);
+  const [menuPessoalAberto, setMenuPessoalAberto]             = useState(false);
+  const [menuImovelAberto, setMenuImovelAberto]               = useState(false);
   const [mesDash, setMesDash] = useState(String(hoje.getMonth() + 1).padStart(2, "0"));
   const [anoDash, setAnoDash] = useState(String(hoje.getFullYear()));
   const [loading, setLoading] = useState(false);
 
   // Empresa
-  const [notas, setNotas] = useState<any[]>([]);
+  const [notas,    setNotas]    = useState<any[]>([]);
   const [despesas, setDespesas] = useState<any[]>([]);
   // Pessoal
   const [entradasPF, setEntradasPF] = useState<any[]>([]);
-  const [saidasPF, setSaidasPF] = useState<any[]>([]);
-  // Investimentos/Patrimônio
-  const [caixinhas, setCaixinhas] = useState<any[]>([]);
-  const [consorcios, setConsorcios] = useState<any[]>([]);
+  const [saidasPF,   setSaidasPF]   = useState<any[]>([]);
+  // Investimentos / Patrimônio
+  const [caixinhas,      setCaixinhas]      = useState<any[]>([]);
+  const [consorcios,     setConsorcios]     = useState<any[]>([]);
   const [proximaParcela, setProximaParcela] = useState<any | null>(null);
-  // Imóvel — dados dinâmicos do banco
-  const [imovelPago, setImovelPago] = useState(0);
-  const [casaPago, setCasaPago] = useState(0);
-  const [imovelAtualizado, setImovelAtualizado] = useState(0);
-  const [proximaParcelaImovel, setProximaParcelaImovel] = useState<{ valor: number; dias: number } | null>(null);
-  const [escrituraPaga, setEscriturapaga] = useState(0); // valor em R$ já pago na escritura
-  const [cubsRestantesEscritura, setCubsRestantesEscritura] = useState(CUBS_ESCRITURA_TOTAL);
+  // Imóvel
+  const [imovelPago,            setImovelPago]            = useState(0);
+  const [casaPago,              setCasaPago]              = useState(0);
+  const [imovelAtualizado,      setImovelAtualizado]      = useState(0);
+  const [proximaParcelaImovel,  setProximaParcelaImovel]  = useState<{ valor: number; dias: number } | null>(null);
+  const [escrituraPaga,         setEscriturapaga]         = useState(0);
+  const [cubsRestantesEscritura,setCubsRestantesEscritura]= useState(CUBS_ESCRITURA_TOTAL);
 
   useEffect(() => { buscarTodos(); }, []);
 
@@ -60,8 +61,8 @@ export default function App() {
     function fecharMenus(e: MouseEvent) {
       const alvo = e.target as HTMLElement;
       if (!alvo.closest("#menu-investimentos")) setMenuInvestimentosAberto(false);
-      if (!alvo.closest("#menu-pessoal")) setMenuPessoalAberto(false);
-      if (!alvo.closest("#menu-imovel")) setMenuImovelAberto(false);
+      if (!alvo.closest("#menu-pessoal"))       setMenuPessoalAberto(false);
+      if (!alvo.closest("#menu-imovel"))        setMenuImovelAberto(false);
     }
     document.addEventListener("mousedown", fecharMenus);
     return () => document.removeEventListener("mousedown", fecharMenus);
@@ -82,7 +83,7 @@ export default function App() {
         supabase.from("caixinhas").select("valor_atual,nome,meta"),
         supabase.from("consorcios").select("valor_bem,descricao"),
         supabase.from("parcelas_calculadas").select("valor_total,data_vencimento").eq("status","pendente").order("data_vencimento",{ascending:true}).limit(1),
-        supabase.from("imovel_cub").select("valor_cub").order("data_registro", { ascending: false }).limit(1),
+        supabase.from("imovel_cub").select("valor_cub").order("data_registro",{ascending:false}).limit(1),
         supabase.from("imovel_parcelas").select("numero_parcela,valor_pago,adiantada"),
         supabase.from("imovel_reforcos").select("valor_reais,cubs_pagos,is_escritura"),
         supabase.from("imovel").select("valor_original,cub_referencia_original").limit(1).single(),
@@ -97,102 +98,82 @@ export default function App() {
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
 
-      // ── Total casa ──
       const totalCasa = (rCasaAportes.data || []).reduce((s: number, a: any) => s + (Number(a.valor) || 0), 0);
       setCasaPago(totalCasa);
 
-      // ── Cálculos do imóvel ──
-      const reforcos = rReforcos.data || [];
+      const reforcos       = rReforcos.data || [];
       const parcelasImovel = rParcelasImovel.data || [];
-
       const totalParc = parcelasImovel.reduce((s: number, p: any) => s + (Number(p.valor_pago) || 0), 0);
       const totalRef  = reforcos.reduce((s: number, r: any) => s + (Number(r.valor_reais) || 0), 0);
       setImovelPago(totalParc + totalRef);
 
-      // Escritura — CUBs já pagos
-      const cubsPagosEsc = reforcos
-        .filter((r: any) => r.is_escritura)
-        .reduce((s: number, r: any) => s + (Number(r.cubs_pagos) || 0), 0);
-      const escrituraReais = reforcos
-        .filter((r: any) => r.is_escritura)
-        .reduce((s: number, r: any) => s + (Number(r.valor_reais) || 0), 0);
-      setEscriturapaga(escrituraReais);
+      const cubsPagosEsc = reforcos.filter((r: any) => r.is_escritura).reduce((s: number, r: any) => s + (Number(r.cubs_pagos) || 0), 0);
+      const escrituraR   = reforcos.filter((r: any) => r.is_escritura).reduce((s: number, r: any) => s + (Number(r.valor_reais) || 0), 0);
+      setEscriturapaga(escrituraR);
       setCubsRestantesEscritura(parseFloat((CUBS_ESCRITURA_TOTAL - cubsPagosEsc).toFixed(4)));
 
-      // Valor atualizado pelo CUB
       if (rCub.data && rCub.data[0] && rImovel.data) {
         const cubAtualVal = Number(rCub.data[0].valor_cub);
         const { valor_original, cub_referencia_original } = rImovel.data;
         const totalCubs = Number(valor_original) / Number(cub_referencia_original);
         setImovelAtualizado(totalCubs * cubAtualVal);
 
-        // Próxima parcela
         const CUBS_PARCELA = 0.8582;
         const valorProxima = parseFloat((CUBS_PARCELA * cubAtualVal).toFixed(2));
         const parcelasNormais = parcelasImovel.filter((p: any) => !p.adiantada);
         const proximaNum = parcelasNormais.length > 0
-          ? Math.max(...parcelasNormais.map((p: any) => p.numero_parcela)) + 1
-          : 1;
+          ? Math.max(...parcelasNormais.map((p: any) => p.numero_parcela)) + 1 : 1;
         const dataInicio = new Date("2022-12-10T12:00:00");
         dataInicio.setMonth(dataInicio.getMonth() + proximaNum - 1);
         const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
         const dias = Math.ceil((dataInicio.getTime() - hoje2.getTime()) / 86400000);
         setProximaParcelaImovel({ valor: valorProxima, dias });
       }
-
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
 
-  // ── Cálculos do mês ──
-  const prefixoDash = `${anoDash}-${mesDash}`;
-  const notasDoMes = notas.filter(n => n.data_emissao?.startsWith(prefixoDash));
+  // ── cálculos do mês ──────────────────────────────────────────────────────
+  const prefixoDash    = `${anoDash}-${mesDash}`;
+  const notasDoMes     = notas.filter(n => n.data_emissao?.startsWith(prefixoDash));
   const faturamentoMes = notasDoMes.reduce((s, n) => s + (Number(n.valor) || 0), 0);
-  const aliquotaMes = Number(mesDash) >= 6 ? 0.07 : 0.06;
-  const impostoMes = faturamentoMes * aliquotaMes;
-  const custosMes = despesas.reduce((s, d) => {
+  const aliquotaMes    = Number(mesDash) >= 6 ? 0.07 : 0.06;
+  const impostoMes     = faturamentoMes * aliquotaMes;
+  const custosMes      = despesas.reduce((s, d) => {
     const v = Number(d.valor) || 0;
     if (d.periodicidade === "Anual") return s + v / 12;
     return d.data_vencimento?.startsWith(prefixoDash) ? s + v : s;
   }, 0);
-  const lucroEmpresaMes = faturamentoMes - impostoMes - custosMes;
-  const entradasDoMes = entradasPF.filter(e => e.data_entrada?.startsWith(prefixoDash));
+  const lucroEmpresaMes  = faturamentoMes - impostoMes - custosMes;
+  const entradasDoMes    = entradasPF.filter(e => e.data_entrada?.startsWith(prefixoDash));
   const totalEntradasMes = entradasDoMes.reduce((s, e) => s + (Number(e.valor) || 0), 0);
-  const saidasDoMes = saidasPF.filter(s => s.data_gasto?.startsWith(prefixoDash));
-  const totalSaidasMes = saidasDoMes.reduce((s, g) => s + (Number(g.valor) || 0), 0);
-  const saldoMes = totalEntradasMes - totalSaidasMes;
+  const saidasDoMes      = saidasPF.filter(s => s.data_gasto?.startsWith(prefixoDash));
+  const totalSaidasMes   = saidasDoMes.reduce((s, g) => s + (Number(g.valor) || 0), 0);
+  const saldoMes         = totalEntradasMes - totalSaidasMes;
 
-  // ── Patrimônio ──
-  const totalCaixinhas = caixinhas.reduce((s, c) => s + (Number(c.valor_atual) || 0), 0);
-  const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem) || 0), 0);
+  const totalCaixinhas  = caixinhas.reduce((s, c) => s + (Number(c.valor_atual) || 0), 0);
+  const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem)  || 0), 0);
   const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios;
-  const faturamentoAno = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
-
-  const diasParaParcela = proximaParcela?.data_vencimento ? (() => {
-    const [y,m,d] = proximaParcela.data_vencimento.split("-").map(Number);
-    const alvo = new Date(y, m - 1, d);
-    return Math.ceil((alvo.getTime() - new Date().setHours(0,0,0,0)) / 86400000);
-  })() : null;
+  const faturamentoAno  = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
   const rankingCats = Object.entries(
-    saidasDoMes.reduce((acc: Record<string, number>, g: any) => ({
-      ...acc, [g.categoria || "Outros"]: (acc[g.categoria || "Outros"] || 0) + (Number(g.valor) || 0),
+    saidasDoMes.reduce((acc: Record<string,number>, g: any) => ({
+      ...acc, [g.categoria||"Outros"]: (acc[g.categoria||"Outros"]||0) + (Number(g.valor)||0),
     }), {})
   ).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const maxCat = rankingCats[0]?.[1] ?? 1;
 
-  // ── Progresso do imóvel ──
   const progressoImovel = imovelAtualizado > 0 ? Math.min(100, (imovelPago / imovelAtualizado) * 100) : 0;
 
-  // ── Nav ──
+  // ── nav config ────────────────────────────────────────────────────────────
   const navItems = [
     { id: "geral",   label: "Painel Geral", icon: <LayoutDashboard size={14}/> },
     { id: "empresa", label: "Empresa",      icon: <Building2 size={14}/> },
   ];
 
   const subItensImovel = [
-    { id: "apartamento", label: "Apartamento 810", icon: <BedDouble size={13}/> },
-    { id: 'casa', label: 'Casa Jardim Mirante', icon: <Trees size={13}/> },
+    { id: "apartamento", label: "Apartamento 810",    icon: <BedDouble size={13}/> },
+    { id: "casa",        label: "Casa Jardim Mirante", icon: <Trees size={13}/> },
   ];
 
   const subItensInvestimento = [
@@ -201,22 +182,18 @@ export default function App() {
     { id: "caixinhas",  label: "Caixinhas", icon: <PiggyBank size={13}/> },
   ];
 
+  // ← "Resumo" agora é o primeiro item do menu Pessoal
   const subItensPessoal = [
+    { id: "resumo",   label: "Resumo",   icon: <BarChart2 size={13}/> },
     { id: "entradas", label: "Entradas", icon: <TrendingUp size={13}/> },
     { id: "saidas",   label: "Saídas",   icon: <CreditCard size={13}/> },
   ];
 
-  function selecionarSubImovel(sub: string) {
-    setSubAbaImovel(sub); setAbaAtiva("imoveis"); setMenuImovelAberto(false);
-  }
-  function selecionarSubInvestimento(sub: string) {
-    setSubAbaInvestimento(sub); setAbaAtiva("investimentos"); setMenuInvestimentosAberto(false);
-  }
-  function selecionarSubPessoal(sub: string) {
-    setSubAbaPessoal(sub); setAbaAtiva("pessoal"); setMenuPessoalAberto(false);
-  }
+  function selecionarSubImovel(sub: string)       { setSubAbaImovel(sub);        setAbaAtiva("imoveis");       setMenuImovelAberto(false); }
+  function selecionarSubInvestimento(sub: string) { setSubAbaInvestimento(sub);  setAbaAtiva("investimentos"); setMenuInvestimentosAberto(false); }
+  function selecionarSubPessoal(sub: string)      { setSubAbaPessoal(sub);       setAbaAtiva("pessoal");       setMenuPessoalAberto(false); }
 
-  // ── Painel Geral ──
+  // ── Painel Geral ──────────────────────────────────────────────────────────
   const PainelGeral = () => (
     <div className="min-h-screen bg-slate-50/60">
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
@@ -234,7 +211,12 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {loading && <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-bold"><div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"/>Atualizando...</div>}
+            {loading && (
+              <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-bold">
+                <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"/>
+                Atualizando...
+              </div>
+            )}
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
               <Calendar size={13} className="text-slate-400"/>
               <select value={mesDash} onChange={e => setMesDash(e.target.value)} className="text-xs font-bold text-slate-700 outline-none bg-transparent pr-1">
@@ -257,11 +239,11 @@ export default function App() {
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
               {[
-                { label: "Apt 810",   valor: imovelPago,      icon: <Home size={14}/>,      cor: "text-cyan-400",   nota: "pago até hoje" },
-                { label: "Caixinhas", valor: totalCaixinhas,  icon: <PiggyBank size={14}/>, cor: "text-emerald-400",nota: `${caixinhas.length} cofrinhos` },
-                { label: "Consórcio", valor: totalConsorcios, icon: <Shield size={14}/>,    cor: "text-violet-400", nota: "crédito total" },
-                { label: "Casa",      valor: casaPago,        icon: <Home size={14}/>,      cor: "text-emerald-400",nota: "Jardim Mirante" },
-                { label: "Ações",     valor: 0,               icon: <PieChart size={14}/>,  cor: "text-slate-500",  nota: "não cadastrado" },
+                { label: "Apt 810",   valor: imovelPago,      icon: <Home size={14}/>,      cor: "text-cyan-400",    nota: "pago até hoje" },
+                { label: "Caixinhas", valor: totalCaixinhas,  icon: <PiggyBank size={14}/>, cor: "text-emerald-400", nota: `${caixinhas.length} cofrinhos` },
+                { label: "Consórcio", valor: totalConsorcios, icon: <Shield size={14}/>,    cor: "text-violet-400",  nota: "crédito total" },
+                { label: "Casa",      valor: casaPago,        icon: <Home size={14}/>,      cor: "text-emerald-400", nota: "Jardim Mirante" },
+                { label: "Ações",     valor: 0,               icon: <PieChart size={14}/>,  cor: "text-slate-500",   nota: "não cadastrado" },
               ].map((item, i) => (
                 <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-3 min-w-[130px]">
                   <div className={`flex items-center gap-1.5 ${item.cor} mb-2`}>{item.icon}<span className="text-[10px] font-black uppercase tracking-wider">{item.label}</span></div>
@@ -273,11 +255,19 @@ export default function App() {
           </div>
         </div>
 
-        {/* FLUXO DO MÊS */}
+        {/* FLUXO DO MÊS — agora com atalho para Resumo Pessoal */}
         <div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-            Fluxo Pessoal — {MESES_COMPLETOS[Number(mesDash)-1]} {anoDash}
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Fluxo Pessoal — {MESES_COMPLETOS[Number(mesDash)-1]} {anoDash}
+            </p>
+            <button
+              onClick={() => selecionarSubPessoal("resumo")}
+              className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 flex items-center gap-1 transition-colors"
+            >
+              Ver resumo completo <ArrowRight size={10}/>
+            </button>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
@@ -373,7 +363,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Imóvel — 100% dinâmico */}
+          {/* Imóvel */}
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -382,8 +372,6 @@ export default function App() {
               </div>
               <button onClick={() => selecionarSubImovel("apartamento")} className="text-[10px] font-bold text-cyan-500 hover:text-cyan-700 flex items-center gap-1">Ver <ArrowRight size={10}/></button>
             </div>
-
-            {/* Progresso do pagamento */}
             <div className="mb-3 p-3 bg-cyan-50 rounded-xl">
               <p className="text-[10px] font-black text-cyan-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <Home size={10}/> Financiamento
@@ -396,13 +384,11 @@ export default function App() {
                 <span className="text-cyan-500">{progressoImovel.toFixed(1)}% · valor atual {fmt(imovelAtualizado)}</span>
               </div>
             </div>
-
-            {/* Escritura */}
             {cubsRestantesEscritura < CUBS_ESCRITURA_TOTAL && (
               <div className="mb-3 p-3 bg-purple-50 rounded-xl">
                 <p className="text-[10px] font-black text-purple-700 uppercase tracking-wider mb-1">🏠 Escritura</p>
                 <div className="w-full bg-white rounded-full h-1.5 mb-1">
-                  <div className="h-full bg-purple-500 rounded-full" style={{ width: `${Math.min(100,((CUBS_ESCRITURA_TOTAL - cubsRestantesEscritura)/CUBS_ESCRITURA_TOTAL)*100).toFixed(1)}%` }}/>
+                  <div className="h-full bg-purple-500 rounded-full" style={{ width: `${Math.min(100,((CUBS_ESCRITURA_TOTAL-cubsRestantesEscritura)/CUBS_ESCRITURA_TOTAL)*100).toFixed(1)}%` }}/>
                 </div>
                 <div className="flex justify-between text-[10px] font-semibold">
                   <span className="text-purple-600">{fmt(escrituraPaga)} pago</span>
@@ -412,8 +398,6 @@ export default function App() {
                 </div>
               </div>
             )}
-
-            {/* Próxima parcela */}
             {proximaParcelaImovel ? (
               <div className="p-3 bg-indigo-50 rounded-xl">
                 <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider mb-1 flex items-center gap-1">
@@ -479,8 +463,10 @@ export default function App() {
                       return (
                         <div key={i} className="flex-1 flex flex-col items-center gap-1">
                           <div className="w-full flex items-end" style={{ height: "88px" }}>
-                            <div className={`w-full rounded-t-sm transition-all ${isAtivo ? "bg-blue-500" : f.v > 0 ? "bg-blue-200" : "bg-slate-100"}`}
-                              style={{ height: `${Math.max(pct, 2)}%` }}/>
+                            <div
+                              className={`w-full rounded-t-sm transition-all ${isAtivo ? "bg-blue-500" : f.v > 0 ? "bg-blue-200" : "bg-slate-100"}`}
+                              style={{ height: `${Math.max(pct, 2)}%` }}
+                            />
                           </div>
                           <span className={`text-[8px] font-bold ${isAtivo ? "text-blue-600" : "text-slate-400"}`}>{f.m}</span>
                         </div>
@@ -492,10 +478,12 @@ export default function App() {
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
 
+  // ── render ────────────────────────────────────────────────────────────────
   return (
     <PasswordGate>
       <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-600">
@@ -513,7 +501,7 @@ export default function App() {
                 </button>
               ))}
 
-              {/* Imóveis dropdown */}
+              {/* Imóveis */}
               <div id="menu-imovel" className="relative">
                 <button onClick={() => setMenuImovelAberto(v => !v)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${abaAtiva === "imoveis" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
@@ -523,12 +511,8 @@ export default function App() {
                 {menuImovelAberto && (
                   <div className="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 min-w-[170px] z-50">
                     {subItensImovel.map(sub => (
-                      <button key={sub.id}
-                        onClick={() => !sub.disabled && selecionarSubImovel(sub.id)}
-                        disabled={sub.disabled}
-                        className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition-colors text-left
-                          ${sub.disabled ? "text-slate-300 cursor-not-allowed" :
-                            abaAtiva === "imoveis" && subAbaImovel === sub.id ? "text-blue-600 bg-blue-50" : "text-slate-600 hover:bg-slate-50"}`}>
+                      <button key={sub.id} onClick={() => selecionarSubImovel(sub.id)}
+                        className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition-colors text-left ${abaAtiva === "imoveis" && subAbaImovel === sub.id ? "text-blue-600 bg-blue-50" : "text-slate-600 hover:bg-slate-50"}`}>
                         {sub.icon} {sub.label}
                       </button>
                     ))}
@@ -536,7 +520,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* Pessoal dropdown */}
+              {/* Pessoal */}
               <div id="menu-pessoal" className="relative">
                 <button onClick={() => setMenuPessoalAberto(v => !v)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${abaAtiva === "pessoal" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
@@ -544,7 +528,7 @@ export default function App() {
                   <ChevronDown size={12} className={`transition-transform ${menuPessoalAberto ? "rotate-180" : ""}`}/>
                 </button>
                 {menuPessoalAberto && (
-                  <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 min-w-[140px] z-50">
+                  <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 min-w-[150px] z-50">
                     {subItensPessoal.map(sub => (
                       <button key={sub.id} onClick={() => selecionarSubPessoal(sub.id)}
                         className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition-colors text-left ${abaAtiva === "pessoal" && subAbaPessoal === sub.id ? "text-blue-600 bg-blue-50" : "text-slate-600 hover:bg-slate-50"}`}>
@@ -555,7 +539,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* Investimentos dropdown */}
+              {/* Investimentos */}
               <div id="menu-investimentos" className="relative">
                 <button onClick={() => setMenuInvestimentosAberto(v => !v)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${abaAtiva === "investimentos" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
@@ -576,21 +560,19 @@ export default function App() {
             </nav>
           </div>
 
+          {/* Sub-tabs Imóveis */}
           {abaAtiva === "imoveis" && (
             <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
               {subItensImovel.map(sub => (
-                <button key={sub.id}
-                  onClick={() => !sub.disabled && setSubAbaImovel(sub.id)}
-                  disabled={sub.disabled}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all
-                    ${sub.disabled ? "text-slate-300 cursor-not-allowed" :
-                      subAbaImovel === sub.id ? "bg-cyan-100 text-cyan-700" : "text-slate-400 hover:text-slate-600"}`}>
+                <button key={sub.id} onClick={() => setSubAbaImovel(sub.id)}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subAbaImovel === sub.id ? "bg-cyan-100 text-cyan-700" : "text-slate-400 hover:text-slate-600"}`}>
                   {sub.icon} {sub.label}
                 </button>
               ))}
             </div>
           )}
 
+          {/* Sub-tabs Investimentos */}
           {abaAtiva === "investimentos" && (
             <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
               {subItensInvestimento.map(sub => (
@@ -602,11 +584,12 @@ export default function App() {
             </div>
           )}
 
+          {/* Sub-tabs Pessoal — agora com Resumo, Entradas, Saídas */}
           {abaAtiva === "pessoal" && (
             <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
               {subItensPessoal.map(sub => (
                 <button key={sub.id} onClick={() => setSubAbaPessoal(sub.id)}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subAbaPessoal === sub.id ? "bg-rose-100 text-rose-700" : "text-slate-400 hover:text-slate-600"}`}>
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subAbaPessoal === sub.id ? "bg-teal-100 text-teal-700" : "text-slate-400 hover:text-slate-600"}`}>
                   {sub.icon} {sub.label}
                 </button>
               ))}
@@ -618,9 +601,12 @@ export default function App() {
           {abaAtiva === "geral"   && <PainelGeral />}
           {abaAtiva === "empresa" && <ControleEmpresa />}
           {abaAtiva === "imoveis" && subAbaImovel === "apartamento" && <Apartamento />}
-          {abaAtiva === "imoveis" && subAbaImovel === "casa" && <CasaJardimMirante />}
+          {abaAtiva === "imoveis" && subAbaImovel === "casa"        && <CasaJardimMirante />}
+          {/* ── Pessoal ── */}
+          {abaAtiva === "pessoal" && subAbaPessoal === "resumo"   && <ResumoPessoal />}
           {abaAtiva === "pessoal" && subAbaPessoal === "entradas" && <EntradasPessoais />}
           {abaAtiva === "pessoal" && subAbaPessoal === "saidas"   && <SaidasPainel />}
+          {/* ── Investimentos ── */}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"      && <CarteiraInvestimentos />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios" && <Consorcios />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"  && <Caixinhas />}

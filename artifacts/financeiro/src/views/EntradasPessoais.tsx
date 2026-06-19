@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Plus, X, Edit2, Trash2, TrendingUp, Calendar, Wallet } from 'lucide-react';
+import {
+  TrendingUp, Plus, X, Edit2, Trash2, ChevronLeft, ChevronRight,
+  AlertTriangle, Info, CheckCircle, Settings, Tag,
+} from 'lucide-react';
 
 interface Entrada {
   id: string;
@@ -11,50 +14,132 @@ interface Entrada {
   recorrente: boolean;
 }
 
-const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const MESES_FULL  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
-const TIPO_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  PRO_LABORE: { label: 'Pró-labore', bg: 'bg-blue-100', text: 'text-blue-700' },
-  DIVIDENDOS: { label: 'Dividendos', bg: 'bg-emerald-100', text: 'text-emerald-700' },
-  OUTROS:     { label: 'Outros',     bg: 'bg-slate-100',  text: 'text-slate-600' },
+// Tipos padrão do sistema
+const TIPOS_PADRAO = [
+  'Pró-labore',
+  'Dividendos',
+  'Salário',
+  'Vendas',
+  'Lucro Distribuído',
+  'Aluguel',
+  'Freelance',
+  'Outros',
+];
+
+const TIPO_CORES: Record<string, { bg: string; text: string }> = {
+  'Pró-labore':       { bg: 'bg-sky-50',      text: 'text-sky-700'      },
+  'Dividendos':       { bg: 'bg-emerald-50',   text: 'text-emerald-700'  },
+  'Salário':          { bg: 'bg-blue-50',      text: 'text-blue-700'     },
+  'Vendas':           { bg: 'bg-violet-50',    text: 'text-violet-700'   },
+  'Lucro Distribuído':{ bg: 'bg-teal-50',      text: 'text-teal-700'     },
+  'Aluguel':          { bg: 'bg-amber-50',     text: 'text-amber-700'    },
+  'Freelance':        { bg: 'bg-indigo-50',    text: 'text-indigo-700'   },
+  'Outros':           { bg: 'bg-slate-100',    text: 'text-slate-600'    },
 };
 
-const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function getTipoCor(tipo: string) {
+  return TIPO_CORES[tipo] ?? { bg: 'bg-slate-100', text: 'text-slate-600' };
+}
+
+function fmtBRL(v: number) {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function mesAtualYM() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function navegarMes(ym: string, dir: number) {
+  const [a, m] = ym.split('-').map(Number);
+  const d = new Date(a, m - 1 + dir, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function labelMesYM(ym: string) {
+  const parts = ym.split('-');
+  const ano = parseInt(parts[0], 10);
+  const mes = parseInt(parts[1], 10);
+  if (isNaN(ano) || isNaN(mes) || mes < 1 || mes > 12) return ym;
+  return `${MESES_FULL[mes - 1]} ${ano}`;
+}
+
+function formatarData(d: string) {
+  const p = d.split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d;
+}
+
+const inputCls = 'w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 hover:border-slate-300 transition-colors';
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function AlertaCard({ type, children }: { type: 'warn'|'ok'|'info'; children: React.ReactNode }) {
+  const map = {
+    warn: { cls: 'bg-amber-50 border border-amber-200 text-amber-800', Icon: AlertTriangle },
+    ok:   { cls: 'bg-emerald-50 border border-emerald-200 text-emerald-800', Icon: CheckCircle },
+    info: { cls: 'bg-sky-50 border border-sky-200 text-sky-800', Icon: Info },
+  };
+  const { cls, Icon } = map[type];
+  return (
+    <div className={`flex gap-2.5 items-start px-4 py-3 rounded-xl text-xs font-medium ${cls}`}>
+      <Icon size={13} className="mt-0.5 shrink-0"/>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+const formInicial = {
+  descricao: '', tipo: 'Pró-labore', valor: '',
+  data_entrada: new Date().toISOString().split('T')[0], recorrente: false,
+};
 
 export default function EntradasPessoais() {
-  const hoje = new Date();
-  const [mesAtivo, setMesAtivo] = useState(String(hoje.getMonth() + 1).padStart(2, '0'));
-  const [anoAtivo, setAnoAtivo] = useState(String(hoje.getFullYear()));
-  const [entradas, setEntradas] = useState<Entrada[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [modal, setModal] = useState(false);
-  const [idEditando, setIdEditando] = useState<string | null>(null);
+  const [mes,       setMes]       = useState(mesAtualYM);
+  const [entradas,  setEntradas]  = useState<Entrada[]>([]);
+  const [loading,   setLoading]   = useState(false);
+  const [modal,     setModal]     = useState(false);
+  const [modalCat,  setModalCat]  = useState(false);   // modal de categorias
+  const [editId,    setEditId]    = useState<string | null>(null);
+  const [form,      setForm]      = useState({ ...formInicial });
   const [tabelaExiste, setTabelaExiste] = useState(true);
-  const [form, setForm] = useState({
-    descricao: '', tipo: 'PRO_LABORE', valor: '',
-    data_entrada: hoje.toISOString().split('T')[0], recorrente: false,
+
+  // categorias customizadas (localStorage simples)
+  const [tiposCustom, setTiposCustom] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('entradas_tipos_custom') || '[]'); }
+    catch { return []; }
   });
+  const [novoTipo, setNovoTipo] = useState('');
 
-  useEffect(() => { buscarEntradas(); }, [mesAtivo, anoAtivo]);
+  const todosOsTipos = [...TIPOS_PADRAO, ...tiposCustom.filter(t => !TIPOS_PADRAO.includes(t))];
 
-  async function buscarEntradas() {
+  useEffect(() => { buscar(); }, [mes]);
+
+  async function buscar() {
     setLoading(true);
     try {
-      const primeiroDia = `${anoAtivo}-${mesAtivo}-01`;
-      const ultimoDia   = `${anoAtivo}-${mesAtivo}-${new Date(Number(anoAtivo), Number(mesAtivo), 0).getDate()}`;
+      const [a, m] = mes.split('-').map(Number);
+      const mm    = String(m).padStart(2, '0');
+      const first = `${a}-${mm}-01`;
+      const last  = `${a}-${mm}-${new Date(a, m, 0).getDate()}`;
       const { data, error } = await supabase
         .from('entradas_pessoais').select('*')
-        .gte('data_entrada', primeiroDia).lte('data_entrada', ultimoDia)
+        .gte('data_entrada', first).lte('data_entrada', last)
         .order('data_entrada', { ascending: false });
       if (error) {
-        if (error.message?.includes('does not exist') || error.code === '42P01') {
-          setTabelaExiste(false);
-        } else {
-          console.error(error);
-        }
+        if (error.code === '42P01') setTabelaExiste(false);
+        else console.error(error);
       } else {
         setTabelaExiste(true);
-        if (data) setEntradas(data);
+        setEntradas(data ?? []);
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -67,63 +152,87 @@ export default function EntradasPessoais() {
       valor: parseFloat(form.valor), data_entrada: form.data_entrada,
       recorrente: form.recorrente,
     };
-    try {
-      if (idEditando) await supabase.from('entradas_pessoais').update(dados).eq('id', idEditando);
-      else await supabase.from('entradas_pessoais').insert([dados]);
-      setModal(false); setIdEditando(null);
-      setForm({ descricao: '', tipo: 'PRO_LABORE', valor: '', data_entrada: hoje.toISOString().split('T')[0], recorrente: false });
-      buscarEntradas();
-    } catch (err: any) { alert('Erro: ' + err.message); }
+    if (editId) await supabase.from('entradas_pessoais').update(dados).eq('id', editId);
+    else        await supabase.from('entradas_pessoais').insert([dados]);
+    fecharModal(); buscar();
   }
 
   async function deletar(id: string) {
     if (!confirm('Excluir este lançamento?')) return;
     await supabase.from('entradas_pessoais').delete().eq('id', id);
-    buscarEntradas();
+    buscar();
   }
 
   function editar(e: Entrada) {
-    setIdEditando(e.id);
+    setEditId(e.id);
     setForm({ descricao: e.descricao, tipo: e.tipo, valor: String(e.valor), data_entrada: e.data_entrada, recorrente: e.recorrente });
     setModal(true);
   }
 
-  const formatarData = (d: string) => {
-    const p = d.split('-');
-    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d;
-  };
+  function fecharModal() {
+    setModal(false); setEditId(null); setForm({ ...formInicial });
+  }
 
-  const totalMes = entradas.reduce((s, e) => s + (Number(e.valor) || 0), 0);
-  const totalPL   = entradas.filter(e => e.tipo === 'PRO_LABORE').reduce((s, e) => s + Number(e.valor), 0);
-  const totalDiv  = entradas.filter(e => e.tipo === 'DIVIDENDOS').reduce((s, e) => s + Number(e.valor), 0);
+  function adicionarTipo() {
+    const t = novoTipo.trim();
+    if (!t || todosOsTipos.includes(t)) return;
+    const novos = [...tiposCustom, t];
+    setTiposCustom(novos);
+    localStorage.setItem('entradas_tipos_custom', JSON.stringify(novos));
+    setNovoTipo('');
+  }
 
-  if (!tabelaExiste) {
-    return (
-      <div className="min-h-screen bg-slate-50/60 flex items-center justify-center p-8">
-        <div className="bg-white border border-slate-100 rounded-2xl p-8 max-w-lg text-center shadow-sm space-y-4">
-          <div className="p-3 bg-amber-100 text-amber-600 rounded-2xl w-fit mx-auto"><Wallet size={24}/></div>
-          <h3 className="text-lg font-black text-slate-900">Tabela ainda não criada</h3>
-          <p className="text-sm text-slate-500 font-medium">Acesse o Supabase e execute o SQL abaixo para ativar este módulo:</p>
-          <pre className="text-left text-[11px] bg-slate-900 text-emerald-400 rounded-xl p-4 font-mono leading-relaxed overflow-x-auto">
+  function removerTipo(t: string) {
+    const novos = tiposCustom.filter(x => x !== t);
+    setTiposCustom(novos);
+    localStorage.setItem('entradas_tipos_custom', JSON.stringify(novos));
+  }
+
+  // totais
+  const total    = entradas.reduce((a, e) => a + Number(e.valor), 0);
+  const totalPL  = entradas.filter(e => e.tipo === 'Pró-labore').reduce((a, e) => a + Number(e.valor), 0);
+  const totalDiv = entradas.filter(e => e.tipo === 'Dividendos').reduce((a, e) => a + Number(e.valor), 0);
+
+  // ranking por tipo
+  const rankingTipos = Object.entries(
+    entradas.reduce<Record<string,number>>((acc, e) => ({
+      ...acc, [e.tipo]: (acc[e.tipo] ?? 0) + Number(e.valor),
+    }), {})
+  ).sort((a, b) => b[1] - a[1]);
+
+  const alertas: { type: 'warn'|'ok'|'info'; msg: string }[] = [];
+  if (totalDiv === 0 && total > 0)
+    alertas.push({ type: 'info', msg: 'Nenhum dividendo registrado. Cadastre rendimentos de investimentos para acompanhar sua renda passiva.' });
+  if (total > 0 && (totalPL / total) > 0.9)
+    alertas.push({ type: 'warn', msg: 'Mais de 90% da renda vem de uma única fonte. Diversificar reduz risco financeiro.' });
+  if (total > 20000)
+    alertas.push({ type: 'ok', msg: `Boa receita em ${labelMesYM(mes)}! Lembre de alocar pelo menos 20–30% em investimentos.` });
+
+  if (!tabelaExiste) return (
+    <div className="min-h-screen bg-slate-50/60 flex items-center justify-center p-8">
+      <div className="bg-white border border-slate-100 rounded-2xl p-8 max-w-lg text-center space-y-4 shadow-sm">
+        <div className="p-3 bg-amber-50 text-amber-500 rounded-2xl w-fit mx-auto"><AlertTriangle size={22}/></div>
+        <h3 className="text-sm font-bold text-slate-900">Tabela não encontrada</h3>
+        <p className="text-xs text-slate-500">Execute o SQL abaixo no Supabase para ativar este módulo:</p>
+        <pre className="text-left text-[11px] bg-slate-900 text-emerald-400 rounded-xl p-4 font-mono leading-relaxed overflow-x-auto">
 {`CREATE TABLE entradas_pessoais (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   descricao text NOT NULL,
-  tipo text NOT NULL DEFAULT 'PRO_LABORE',
+  tipo text NOT NULL DEFAULT 'Pró-labore',
   valor numeric NOT NULL,
   data_entrada date NOT NULL,
   recorrente boolean DEFAULT false,
   created_at timestamptz DEFAULT now()
 );`}
-          </pre>
-          <button onClick={buscarEntradas} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Verificar novamente</button>
-        </div>
+        </pre>
+        <button onClick={buscar} className="px-4 py-2 bg-teal-600 text-white rounded-xl text-xs font-bold">Verificar novamente</button>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50/60">
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-5">
 
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -136,124 +245,279 @@ export default function EntradasPessoais() {
               <p className="text-slate-400 text-xs font-semibold mt-0.5">Pró-labore, dividendos e outras receitas</p>
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
-              <Calendar size={13} className="text-slate-400"/>
-              <select value={mesAtivo} onChange={e => setMesAtivo(e.target.value)} className="text-xs font-bold text-slate-700 outline-none bg-transparent pr-1">
-                {MESES.map((m, i) => <option key={i} value={String(i+1).padStart(2,'0')}>{m}</option>)}
-              </select>
-              <select value={anoAtivo} onChange={e => setAnoAtivo(e.target.value)} className="text-xs font-bold text-slate-700 outline-none bg-transparent">
-                <option>2026</option><option>2025</option>
-              </select>
+          <div className="flex items-center gap-2 self-start flex-wrap">
+            {/* nav mês */}
+            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1.5 shadow-sm">
+              <button onClick={() => setMes(m => navegarMes(m, -1))} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"><ChevronLeft size={14}/></button>
+              <span className="text-xs font-bold text-slate-700 px-2 min-w-[120px] text-center">{labelMesYM(mes)}</span>
+              <button onClick={() => setMes(m => navegarMes(m, 1))} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"><ChevronRight size={14}/></button>
             </div>
-            <button onClick={() => { setIdEditando(null); setForm({ descricao:'', tipo:'PRO_LABORE', valor:'', data_entrada: hoje.toISOString().split('T')[0], recorrente:false }); setModal(true); }}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-100 transition-all">
-              <Plus size={13}/> Nova Entrada
+            {/* gerenciar categorias */}
+            <button
+              onClick={() => setModalCat(true)}
+              className="flex items-center gap-1.5 bg-white border border-slate-200 hover:border-slate-400 text-slate-600 text-xs font-bold px-3 py-2 rounded-xl transition-colors shadow-sm"
+            >
+              <Tag size={13}/> Categorias
+            </button>
+            {/* nova entrada */}
+            <button
+              onClick={() => { setEditId(null); setForm({ ...formInicial }); setModal(true); }}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm shadow-emerald-100"
+            >
+              <Plus size={13}/> Nova entrada
             </button>
           </div>
         </div>
 
+        {loading && (
+          <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-bold">
+            <div className="w-3 h-3 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"/>
+            Carregando...
+          </div>
+        )}
+
         {/* KPIs */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total do Mês</p>
-            <p className="text-2xl font-black text-emerald-600 mt-2 tabular-nums">{fmt(totalMes)}</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Total do mês</p>
+            <p className="text-2xl font-black text-emerald-600 tabular-nums">R$ {fmtBRL(total)}</p>
           </div>
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pró-labore</p>
-            <p className="text-2xl font-black text-blue-600 mt-2 tabular-nums">{fmt(totalPL)}</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pró-labore</p>
+            <p className="text-2xl font-black text-sky-700 tabular-nums">R$ {fmtBRL(totalPL)}</p>
           </div>
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dividendos</p>
-            <p className="text-2xl font-black text-teal-600 mt-2 tabular-nums">{fmt(totalDiv)}</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Dividendos</p>
+            <p className={`text-2xl font-black tabular-nums ${totalDiv > 0 ? 'text-teal-700' : 'text-slate-300'}`}>
+              R$ {fmtBRL(totalDiv)}
+            </p>
           </div>
         </div>
 
-        {/* Tabela */}
-        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-            <p className="text-sm font-black text-slate-900">Lançamentos de {MESES[Number(mesAtivo)-1]} {anoAtivo}</p>
+        {/* Alertas */}
+        {!loading && alertas.length > 0 && (
+          <div className="space-y-2">
+            {alertas.map((a, i) => <AlertaCard key={i} type={a.type}>{a.msg}</AlertaCard>)}
           </div>
-          {loading && <div className="py-8 text-center text-xs font-bold text-slate-400">Carregando...</div>}
-          {!loading && entradas.length === 0 && (
-            <div className="py-16 text-center">
-              <TrendingUp size={28} className="text-slate-200 mx-auto mb-3"/>
-              <p className="text-slate-400 text-sm font-bold">Nenhuma entrada neste mês</p>
-              <p className="text-slate-300 text-xs mt-1">Clique em "Nova Entrada" para começar</p>
+        )}
+
+        {/* Concentração por tipo */}
+        {rankingTipos.length > 0 && (
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="p-1.5 bg-sky-50 rounded-lg"><TrendingUp size={14} className="text-sky-600"/></div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Concentração de renda por tipo</p>
             </div>
-          )}
-          {!loading && entradas.length > 0 && (
-            <div className="divide-y divide-slate-50">
-              <div className="grid grid-cols-12 px-6 py-2.5 bg-slate-50">
-                <span className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data</span>
-                <span className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo</span>
-                <span className="col-span-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Descrição</span>
-                <span className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Valor</span>
-                <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ações</span>
-              </div>
-              {entradas.map(e => {
-                const cfg = TIPO_CONFIG[e.tipo] || TIPO_CONFIG.OUTROS;
+            {/* barra empilhada */}
+            <div className="w-full h-2.5 rounded-full overflow-hidden flex mb-4">
+              {rankingTipos.map(([tipo, val], i) => {
+                const cores = ['#0284C7','#059669','#7C3AED','#D97706','#0D9488','#4338CA','#E11D48','#64748B'];
                 return (
-                  <div key={e.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50/60 transition-colors">
-                    <span className="col-span-2 text-xs text-slate-500 font-semibold">{formatarData(e.data_entrada)}</span>
-                    <div className="col-span-2">
-                      <span className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-black ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                  <div key={tipo} style={{ width: `${(val/total)*100}%`, background: cores[i % cores.length] }}
+                    title={`${tipo}: R$ ${fmtBRL(val)}`}/>
+                );
+              })}
+            </div>
+            <div className="space-y-2.5">
+              {rankingTipos.map(([tipo, val], i) => {
+                const pct  = Math.round((val / total) * 100);
+                const cores = ['#0284C7','#059669','#7C3AED','#D97706','#0D9488','#4338CA','#E11D48','#64748B'];
+                const cor  = cores[i % cores.length];
+                return (
+                  <div key={tipo}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cor }}/>
+                        <span className="font-semibold text-slate-700">{tipo}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400">{pct}%</span>
+                        <span className="font-black text-slate-800 w-24 text-right">R$ {fmtBRL(val)}</span>
+                      </div>
                     </div>
-                    <span className="col-span-5 text-xs text-slate-800 font-semibold">
-                      {e.descricao}
-                      {e.recorrente && <span className="ml-2 text-[9px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded font-bold">RECORRENTE</span>}
-                    </span>
-                    <span className="col-span-2 text-xs font-black text-emerald-600 text-right tabular-nums">{fmt(Number(e.valor))}</span>
-                    <div className="col-span-1 flex items-center justify-center gap-1">
-                      <button onClick={() => editar(e)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit2 size={13}/></button>
-                      <button onClick={() => deletar(e.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={13}/></button>
+                    <div className="w-full h-1 rounded-full bg-slate-100">
+                      <div className="h-1 rounded-full transition-all" style={{ width: `${pct}%`, background: cor }}/>
                     </div>
                   </div>
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Tabela de lançamentos */}
+        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+          <div className="flex justify-between items-center mb-5">
+            <div>
+              <p className="text-sm font-black text-slate-800">Lançamentos</p>
+              <p className="text-xs text-slate-400 font-semibold mt-0.5">{entradas.length} registro{entradas.length !== 1 ? 's' : ''} · {labelMesYM(mes)}</p>
+            </div>
+          </div>
+
+          {!loading && entradas.length === 0 ? (
+            <div className="py-12 text-center">
+              <TrendingUp size={24} className="text-slate-200 mx-auto mb-3"/>
+              <p className="text-xs font-semibold text-slate-400">Nenhuma entrada em {labelMesYM(mes)}</p>
+              <p className="text-[10px] text-slate-300 mt-1">Clique em "Nova entrada" para registrar</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Data</th>
+                    <th className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Tipo</th>
+                    <th className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Descrição</th>
+                    <th className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400"></th>
+                    <th className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 text-right">Valor</th>
+                    <th className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {entradas.map(e => {
+                    const ts = getTipoCor(e.tipo);
+                    return (
+                      <tr key={e.id} className="hover:bg-slate-50/60 transition-colors group/row">
+                        <td className="py-3 text-[11px] text-slate-400 font-medium pr-3">{formatarData(e.data_entrada)}</td>
+                        <td className="py-3 pr-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold ${ts.bg} ${ts.text}`}>{e.tipo}</span>
+                        </td>
+                        <td className="py-3 text-xs text-slate-800 font-semibold">{e.descricao}</td>
+                        <td className="py-3 pr-3">
+                          {e.recorrente && <span className="text-[9px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded font-bold uppercase">Fixo</span>}
+                        </td>
+                        <td className="py-3 text-xs font-black text-emerald-600 text-right pr-3">+ R$ {fmtBRL(Number(e.valor))}</td>
+                        <td className="py-3 text-right">
+                          <div className="flex justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                            <button onClick={() => editar(e)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors"><Edit2 size={12}/></button>
+                            <button onClick={() => deletar(e.id)} className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={12}/></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Modal */}
+      {/* ── Modal: Nova / Editar entrada ────────────────────────────────── */}
       {modal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg"><TrendingUp size={15}/></div>
-                <h3 className="text-sm font-black text-slate-900">{idEditando ? 'Editar Entrada' : 'Nova Entrada'}</h3>
-              </div>
-              <button onClick={() => { setModal(false); setIdEditando(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><X size={16}/></button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl relative space-y-5">
+            <button onClick={fecharModal} className="absolute right-4 top-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+              <X size={15}/>
+            </button>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">{editId ? 'Editar entrada' : 'Nova entrada'}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Registre uma receita no período</p>
             </div>
-            <form onSubmit={salvar} className="p-6 space-y-3">
+            <form onSubmit={salvar} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo</label>
-                  <input type="text" placeholder="Ex: Pró-labore, Dividendos..." value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-emerald-400 focus:bg-white transition-all text-slate-700"/>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data *</label>
-                  <input type="date" required value={form.data_entrada} onChange={e => setForm({...form, data_entrada: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-emerald-400 text-slate-700"/>
-                </div>
+                <Field label="Tipo de receita">
+                  <select className={inputCls} value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}>
+                    {todosOsTipos.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </Field>
+                <Field label="Data">
+                  <input required type="date" className={inputCls} value={form.data_entrada} onChange={e => setForm({ ...form, data_entrada: e.target.value })}/>
+                </Field>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descrição *</label>
-                <input type="text" required placeholder="Ex: Pró-labore Junho 2026" value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-emerald-400 text-slate-700"/>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor (R$) *</label>
-                <input type="number" step="0.01" required placeholder="0,00" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-emerald-400 text-slate-700"/>
-              </div>
+              <Field label="Descrição">
+                <input required type="text" className={inputCls} placeholder="Ex: Pró-labore Junho 2026" value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })}/>
+              </Field>
+              <Field label="Valor (R$)">
+                <input required type="number" step="0.01" className={inputCls} placeholder="0,00" value={form.valor} onChange={e => setForm({ ...form, valor: e.target.value })}/>
+              </Field>
               <label className="flex items-center gap-2.5 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50 transition-colors">
-                <input type="checkbox" checked={form.recorrente} onChange={e => setForm({...form, recorrente: e.target.checked})} className="w-4 h-4 rounded accent-emerald-600"/>
+                <input type="checkbox" checked={form.recorrente} onChange={e => setForm({ ...form, recorrente: e.target.checked })} className="w-4 h-4 rounded accent-emerald-600"/>
                 <span className="text-xs font-semibold text-slate-700">Recorrente (lançamento mensal fixo)</span>
               </label>
-              <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-emerald-100 mt-2">
-                {idEditando ? 'Salvar Alterações' : 'Registrar Entrada'}
+              {/* atalho para criar categoria */}
+              <button type="button" onClick={() => { fecharModal(); setModalCat(true); }}
+                className="w-full py-2 border border-dashed border-slate-300 hover:border-slate-400 text-slate-400 hover:text-slate-600 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">
+                <Tag size={12}/> Criar novo tipo de receita
+              </button>
+              <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2.5 rounded-xl transition-colors">
+                {editId ? 'Salvar alterações' : 'Registrar entrada'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Gerenciar categorias ──────────────────────────────────── */}
+      {modalCat && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl relative space-y-5">
+            <button onClick={() => setModalCat(false)} className="absolute right-4 top-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+              <X size={15}/>
+            </button>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-emerald-50 rounded-xl"><Tag size={16} className="text-emerald-600"/></div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Tipos de receita</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Gerencie as categorias do seu sistema</p>
+              </div>
+            </div>
+
+            {/* padrões */}
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Tipos padrão</p>
+              <div className="flex flex-wrap gap-2">
+                {TIPOS_PADRAO.map(t => {
+                  const ts = getTipoCor(t);
+                  return (
+                    <span key={t} className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${ts.bg} ${ts.text}`}>{t}</span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* customizados */}
+            {tiposCustom.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Tipos personalizados</p>
+                <div className="space-y-1.5">
+                  {tiposCustom.map(t => (
+                    <div key={t} className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-xl">
+                      <span className="text-xs font-semibold text-slate-700">{t}</span>
+                      <button onClick={() => removerTipo(t)} className="p-1 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors">
+                        <Trash2 size={12}/>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* adicionar novo */}
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Adicionar novo tipo</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className={inputCls + ' flex-1'}
+                  placeholder="Ex: Rendimento CDB, Aluguel..."
+                  value={novoTipo}
+                  onChange={e => setNovoTipo(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), adicionarTipo())}
+                />
+                <button
+                  onClick={adicionarTipo}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shrink-0"
+                >
+                  <Plus size={13}/>
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1.5">Pressione Enter ou clique + para adicionar</p>
+            </div>
+
+            <button onClick={() => setModalCat(false)} className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors">
+              Fechar
+            </button>
           </div>
         </div>
       )}
