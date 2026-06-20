@@ -3,7 +3,7 @@ import { supabase } from "./lib/supabaseClient";
 import ControleEmpresa from "./views/ControleEmpresa";
 import SaidasPainel from "./views/SaidasPainel";
 import EntradasPessoais from "./views/EntradasPessoais";
-import ResumoPessoal from "./views/ResumoPessoal";          // ← NOVO
+import ResumoPessoal from "./views/ResumoPessoal";
 import CasaJardimMirante from "./views/CasaJardimMirante";
 import Apartamento from "./views/Apartamento";
 import PasswordGate from "./components/PasswordGate";
@@ -15,7 +15,7 @@ import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Shield, Target, Calendar,
-  ArrowRight, BedDouble, Trees, BarChart2,             // ← BarChart2 para Resumo
+  ArrowRight, BedDouble, Trees, BarChart2,
 } from "lucide-react";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -29,7 +29,7 @@ export default function App() {
   const hoje = new Date();
   const [abaAtiva, setAbaAtiva]                     = useState("geral");
   const [subAbaInvestimento, setSubAbaInvestimento] = useState("acoes");
-  const [subAbaPessoal, setSubAbaPessoal]           = useState("resumo");   // ← padrão agora é resumo
+  const [subAbaPessoal, setSubAbaPessoal]           = useState("resumo");
   const [subAbaImovel, setSubAbaImovel]             = useState("apartamento");
   const [menuInvestimentosAberto, setMenuInvestimentosAberto] = useState(false);
   const [menuPessoalAberto, setMenuPessoalAberto]             = useState(false);
@@ -48,6 +48,10 @@ export default function App() {
   const [caixinhas,      setCaixinhas]      = useState<any[]>([]);
   const [consorcios,     setConsorcios]     = useState<any[]>([]);
   const [proximaParcela, setProximaParcela] = useState<any | null>(null);
+  // ── PREVIDÊNCIA ──
+  const [saldoPrevidencia,   setSaldoPrevidencia]   = useState(0);
+  const [rendPrevidencia,    setRendPrevidencia]     = useState(0); // rendimento acumulado
+  const [aportesPrev,        setAportesPrev]         = useState(0); // total aportado
   // Imóvel
   const [imovelPago,            setImovelPago]            = useState(0);
   const [casaPago,              setCasaPago]              = useState(0);
@@ -76,6 +80,7 @@ export default function App() {
         rNotas, rDespesas, rEntradas, rSaidas,
         rCaixinhas, rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
+        rPrevRend, rPrevAportes,
       ] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
@@ -89,6 +94,9 @@ export default function App() {
         supabase.from("imovel_reforcos").select("valor_reais,cubs_pagos,is_escritura"),
         supabase.from("imovel").select("valor_original,cub_referencia_original").limit(1).single(),
         supabase.from("casa_aportes").select("valor"),
+        // ── previdência ──
+        supabase.from("previdencia_rendimentos").select("valor,saldo_final").order("competencia",{ascending:false}).limit(1),
+        supabase.from("previdencia_aportes").select("valor"),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
@@ -98,6 +106,25 @@ export default function App() {
       if (rCaixinhas.data)  setCaixinhas(rCaixinhas.data);
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
+
+      // ── previdência: usa saldo_final do último rendimento se disponível ──
+      if (rPrevRend.data && rPrevRend.data[0]) {
+        const ultimo = rPrevRend.data[0];
+        if (ultimo.saldo_final) {
+          setSaldoPrevidencia(Number(ultimo.saldo_final));
+        } else {
+          // fallback: soma aportes + rendimentos
+          const totalAp  = (rPrevAportes.data || []).reduce((s: number, a: any) => s + Number(a.valor), 0);
+          // busca todos os rendimentos para somar
+          const { data: todosRend } = await supabase.from("previdencia_rendimentos").select("valor");
+          const totalRend = (todosRend || []).reduce((s: number, r: any) => s + Number(r.valor), 0);
+          setSaldoPrevidencia(totalAp + totalRend);
+        }
+      }
+      if (rPrevAportes.data) {
+        const total = rPrevAportes.data.reduce((s: number, a: any) => s + Number(a.valor), 0);
+        setAportesPrev(total);
+      }
 
       const totalCasa = (rCasaAportes.data || []).reduce((s: number, a: any) => s + (Number(a.valor) || 0), 0);
       setCasaPago(totalCasa);
@@ -154,7 +181,10 @@ export default function App() {
 
   const totalCaixinhas  = caixinhas.reduce((s, c) => s + (Number(c.valor_atual) || 0), 0);
   const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem)  || 0), 0);
-  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios;
+
+  // ── patrimônio agora inclui previdência ──────────────────────────────────
+  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios + saldoPrevidencia;
+
   const faturamentoAno  = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
   const rankingCats = Object.entries(
@@ -166,6 +196,11 @@ export default function App() {
 
   const progressoImovel = imovelAtualizado > 0 ? Math.min(100, (imovelPago / imovelAtualizado) * 100) : 0;
 
+  // rentabilidade da previdência
+  const rentabilidadePrev = aportesPrev > 0
+    ? (((saldoPrevidencia - aportesPrev) / aportesPrev) * 100).toFixed(1)
+    : "0";
+
   // ── nav config ────────────────────────────────────────────────────────────
   const navItems = [
     { id: "geral",   label: "Painel Geral", icon: <LayoutDashboard size={14}/> },
@@ -173,7 +208,7 @@ export default function App() {
   ];
 
   const subItensImovel = [
-    { id: "apartamento", label: "Apartamento 810",    icon: <BedDouble size={13}/> },
+    { id: "apartamento", label: "Apartamento 810",     icon: <BedDouble size={13}/> },
     { id: "casa",        label: "Casa Jardim Mirante", icon: <Trees size={13}/> },
   ];
 
@@ -184,16 +219,15 @@ export default function App() {
     { id: "previdencia", label: "Previdência", icon: <Shield size={13}/> },
   ];
 
-  // ← "Resumo" agora é o primeiro item do menu Pessoal
   const subItensPessoal = [
     { id: "resumo",   label: "Resumo",   icon: <BarChart2 size={13}/> },
     { id: "entradas", label: "Entradas", icon: <TrendingUp size={13}/> },
     { id: "saidas",   label: "Saídas",   icon: <CreditCard size={13}/> },
   ];
 
-  function selecionarSubImovel(sub: string)       { setSubAbaImovel(sub);        setAbaAtiva("imoveis");       setMenuImovelAberto(false); }
-  function selecionarSubInvestimento(sub: string) { setSubAbaInvestimento(sub);  setAbaAtiva("investimentos"); setMenuInvestimentosAberto(false); }
-  function selecionarSubPessoal(sub: string)      { setSubAbaPessoal(sub);       setAbaAtiva("pessoal");       setMenuPessoalAberto(false); }
+  function selecionarSubImovel(sub: string)       { setSubAbaImovel(sub);       setAbaAtiva("imoveis");       setMenuImovelAberto(false); }
+  function selecionarSubInvestimento(sub: string) { setSubAbaInvestimento(sub); setAbaAtiva("investimentos"); setMenuInvestimentosAberto(false); }
+  function selecionarSubPessoal(sub: string)      { setSubAbaPessoal(sub);      setAbaAtiva("pessoal");       setMenuPessoalAberto(false); }
 
   // ── Painel Geral ──────────────────────────────────────────────────────────
   const PainelGeral = () => (
@@ -231,25 +265,35 @@ export default function App() {
           </div>
         </div>
 
-        {/* PATRIMÔNIO */}
+        {/* PATRIMÔNIO — agora com 6 itens incluindo Previdência */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-xl">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
               <p className="text-4xl font-black tabular-nums text-white">{fmt(patrimonioTotal)}</p>
-              <p className="text-xs text-slate-500 font-semibold mt-1">Imóvel + Caixinhas + Consórcio</p>
+              <p className="text-xs text-slate-500 font-semibold mt-1">Imóvel + Caixinhas + Consórcio + Previdência</p>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-3 flex-1 lg:max-w-2xl">
               {[
-                { label: "Apt 810",   valor: imovelPago,      icon: <Home size={14}/>,      cor: "text-cyan-400",    nota: "pago até hoje" },
-                { label: "Caixinhas", valor: totalCaixinhas,  icon: <PiggyBank size={14}/>, cor: "text-emerald-400", nota: `${caixinhas.length} cofrinhos` },
-                { label: "Consórcio", valor: totalConsorcios, icon: <Shield size={14}/>,    cor: "text-violet-400",  nota: "crédito total" },
-                { label: "Casa",      valor: casaPago,        icon: <Home size={14}/>,      cor: "text-emerald-400", nota: "Jardim Mirante" },
-                { label: "Ações",     valor: 0,               icon: <PieChart size={14}/>,  cor: "text-slate-500",   nota: "não cadastrado" },
+                { label: "Apt 810",      valor: imovelPago,        icon: <Home size={14}/>,      cor: "text-cyan-400",    nota: "pago até hoje" },
+                { label: "Caixinhas",    valor: totalCaixinhas,    icon: <PiggyBank size={14}/>, cor: "text-emerald-400", nota: `${caixinhas.length} cofrinhos` },
+                { label: "Consórcio",    valor: totalConsorcios,   icon: <Shield size={14}/>,    cor: "text-violet-400",  nota: "crédito total" },
+                { label: "Casa",         valor: casaPago,          icon: <Home size={14}/>,      cor: "text-emerald-400", nota: "Jardim Mirante" },
+                { label: "Previdência",  valor: saldoPrevidencia,  icon: <Shield size={14}/>,    cor: "text-amber-400",   nota: `+${rentabilidadePrev}% sobre aportes` },
+                { label: "Ações",        valor: 0,                 icon: <PieChart size={14}/>,  cor: "text-slate-500",   nota: "não cadastrado" },
               ].map((item, i) => (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-3 min-w-[130px]">
-                  <div className={`flex items-center gap-1.5 ${item.cor} mb-2`}>{item.icon}<span className="text-[10px] font-black uppercase tracking-wider">{item.label}</span></div>
-                  <p className={`text-base font-black tabular-nums ${item.valor === 0 ? "text-slate-600" : "text-white"}`}>{fmt(item.valor)}</p>
+                <div key={i}
+                  className={`bg-white/5 border border-white/10 rounded-xl p-3 cursor-pointer hover:bg-white/10 transition-colors ${item.label === "Previdência" ? "border-amber-400/30" : ""}`}
+                  onClick={() => item.label === "Previdência" ? selecionarSubInvestimento("previdencia") : undefined}
+                >
+                  <div className={`flex items-center gap-1.5 ${item.cor} mb-2`}>
+                    {item.icon}
+                    <span className="text-[10px] font-black uppercase tracking-wider">{item.label}</span>
+                    {item.label === "Previdência" && <span className="ml-auto text-[8px] opacity-50">↗</span>}
+                  </div>
+                  <p className={`text-base font-black tabular-nums ${item.valor === 0 ? "text-slate-600" : "text-white"}`}>
+                    {fmt(item.valor)}
+                  </p>
                   <p className="text-[9px] text-slate-500 font-semibold mt-0.5">{item.nota}</p>
                 </div>
               ))}
@@ -257,7 +301,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* FLUXO DO MÊS — agora com atalho para Resumo Pessoal */}
+        {/* FLUXO DO MÊS */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -485,7 +529,6 @@ export default function App() {
     </div>
   );
 
-  // ── render ────────────────────────────────────────────────────────────────
   return (
     <PasswordGate>
       <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-600">
@@ -494,7 +537,6 @@ export default function App() {
             <span className="text-lg font-black tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               FinançasHub
             </span>
-
             <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/40">
               {navItems.map(item => (
                 <button key={item.id} onClick={() => setAbaAtiva(item.id)}
@@ -502,7 +544,6 @@ export default function App() {
                   {item.icon} {item.label}
                 </button>
               ))}
-
               {/* Imóveis */}
               <div id="menu-imovel" className="relative">
                 <button onClick={() => setMenuImovelAberto(v => !v)}
@@ -521,7 +562,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-
               {/* Pessoal */}
               <div id="menu-pessoal" className="relative">
                 <button onClick={() => setMenuPessoalAberto(v => !v)}
@@ -540,7 +580,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-
               {/* Investimentos */}
               <div id="menu-investimentos" className="relative">
                 <button onClick={() => setMenuInvestimentosAberto(v => !v)}
@@ -562,7 +601,6 @@ export default function App() {
             </nav>
           </div>
 
-          {/* Sub-tabs Imóveis */}
           {abaAtiva === "imoveis" && (
             <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
               {subItensImovel.map(sub => (
@@ -573,8 +611,6 @@ export default function App() {
               ))}
             </div>
           )}
-
-          {/* Sub-tabs Investimentos */}
           {abaAtiva === "investimentos" && (
             <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
               {subItensInvestimento.map(sub => (
@@ -585,8 +621,6 @@ export default function App() {
               ))}
             </div>
           )}
-
-          {/* Sub-tabs Pessoal — agora com Resumo, Entradas, Saídas */}
           {abaAtiva === "pessoal" && (
             <div className="max-w-7xl mx-auto px-6 pb-2 flex items-center gap-1">
               {subItensPessoal.map(sub => (
@@ -604,11 +638,9 @@ export default function App() {
           {abaAtiva === "empresa" && <ControleEmpresa />}
           {abaAtiva === "imoveis" && subAbaImovel === "apartamento" && <Apartamento />}
           {abaAtiva === "imoveis" && subAbaImovel === "casa"        && <CasaJardimMirante />}
-          {/* ── Pessoal ── */}
-          {abaAtiva === "pessoal" && subAbaPessoal === "resumo"   && <ResumoPessoal />}
-          {abaAtiva === "pessoal" && subAbaPessoal === "entradas" && <EntradasPessoais />}
-          {abaAtiva === "pessoal" && subAbaPessoal === "saidas"   && <SaidasPainel />}
-          {/* ── Investimentos ── */}
+          {abaAtiva === "pessoal" && subAbaPessoal === "resumo"     && <ResumoPessoal />}
+          {abaAtiva === "pessoal" && subAbaPessoal === "entradas"   && <EntradasPessoais />}
+          {abaAtiva === "pessoal" && subAbaPessoal === "saidas"     && <SaidasPainel />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"       && <CarteiraInvestimentos />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios"  && <Consorcios />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"   && <Caixinhas />}
