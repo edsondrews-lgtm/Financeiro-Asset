@@ -11,11 +11,12 @@ import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
 import Consorcios from "./views/Consorcios";
 import Caixinhas from "./views/Caixinhas";
 import PrevidenciaPainel from "./views/PrevidenciaPainel";
+import FGTSPainel from "./views/FGTSPainel"; // Adicione esta linha
 import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Shield, Target, Calendar,
-  ArrowRight, BedDouble, Trees, BarChart2,
+  ArrowRight, BedDouble, Trees, BarChart2, Briefcase, // Add Briefcase here
 } from "lucide-react";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -51,7 +52,12 @@ export default function App() {
   // ── PREVIDÊNCIA ──
   const [saldoPrevidencia,   setSaldoPrevidencia]   = useState(0);
   const [rendPrevidencia,    setRendPrevidencia]     = useState(0); // rendimento acumulado
-  const [aportesPrev,        setAportesPrev]         = useState(0); // total aportado
+  const [aportesPrev,        setAportesPrev]         = useState(0);
+  const [totalAcoes,         setTotalAcoes]          = useState(0);
+  // FGTS
+  const [saldoFGTS,          setSaldoFGTS]           = useState(0);
+  // Bens (placeholder até módulo)
+  const BENS_PLACEHOLDER = 200000;
   // Imóvel
   const [imovelPago,            setImovelPago]            = useState(0);
   const [casaPago,              setCasaPago]              = useState(0);
@@ -80,7 +86,7 @@ export default function App() {
         rNotas, rDespesas, rEntradas, rSaidas,
         rCaixinhas, rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
-        rPrevRend, rPrevAportes,
+        rPrevRend, rPrevAportes, rAcoes, rFGTS,
       ] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
@@ -97,6 +103,8 @@ export default function App() {
         // ── previdência ──
         supabase.from("previdencia_rendimentos").select("valor,saldo_final").order("competencia",{ascending:false}).limit(1),
         supabase.from("previdencia_aportes").select("valor"),
+        supabase.from("carteira_investimentos").select("preco_medio,quantidade"),
+        supabase.from("fgts_lancamentos").select("saldo_total").order("data",{ascending:false}).limit(1),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
@@ -124,6 +132,13 @@ export default function App() {
       if (rPrevAportes.data) {
         const total = rPrevAportes.data.reduce((s: number, a: any) => s + Number(a.valor), 0);
         setAportesPrev(total);
+      }
+      if (rAcoes.data) {
+        const total = rAcoes.data.reduce((s: number, a: any) => s + Number(a.preco_medio) * Number(a.quantidade), 0);
+        setTotalAcoes(total);
+      }
+      if (rFGTS.data && rFGTS.data[0]?.saldo_total) {
+        setSaldoFGTS(Number(rFGTS.data[0].saldo_total));
       }
 
       const totalCasa = (rCasaAportes.data || []).reduce((s: number, a: any) => s + (Number(a.valor) || 0), 0);
@@ -183,7 +198,7 @@ export default function App() {
   const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem)  || 0), 0);
 
   // ── patrimônio agora inclui previdência ──────────────────────────────────
-  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios + saldoPrevidencia;
+  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios + saldoPrevidencia + totalAcoes + saldoFGTS + BENS_PLACEHOLDER;
 
   const faturamentoAno  = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
@@ -217,6 +232,7 @@ export default function App() {
     { id: "consorcios",  label: "Consórcio",   icon: <FileText size={13}/> },
     { id: "caixinhas",   label: "Caixinhas",   icon: <PiggyBank size={13}/> },
     { id: "previdencia", label: "Previdência", icon: <Shield size={13}/> },
+    { id: "fgts",        label: "FGTS",        icon: <Briefcase size={13}/> },
   ];
 
   const subItensPessoal = [
@@ -271,25 +287,43 @@ export default function App() {
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
               <p className="text-4xl font-black tabular-nums text-white">{fmt(patrimonioTotal)}</p>
-              <p className="text-xs text-slate-500 font-semibold mt-1">Imóvel + Caixinhas + Consórcio + Previdência</p>
+              <p className="text-xs text-slate-500 font-semibold mt-1">Imóvel + Caixinhas + Consórcio + Previdência + FGTS + Bens</p>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-3 flex-1 lg:max-w-2xl">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
               {[
                 { label: "Apt 810",      valor: imovelPago,        icon: <Home size={14}/>,      cor: "text-cyan-400",    nota: "pago até hoje" },
                 { label: "Caixinhas",    valor: totalCaixinhas,    icon: <PiggyBank size={14}/>, cor: "text-emerald-400", nota: `${caixinhas.length} cofrinhos` },
                 { label: "Consórcio",    valor: totalConsorcios,   icon: <Shield size={14}/>,    cor: "text-violet-400",  nota: "crédito total" },
                 { label: "Casa",         valor: casaPago,          icon: <Home size={14}/>,      cor: "text-emerald-400", nota: "Jardim Mirante" },
                 { label: "Previdência",  valor: saldoPrevidencia,  icon: <Shield size={14}/>,    cor: "text-amber-400",   nota: `+${rentabilidadePrev}% sobre aportes` },
-                { label: "Ações",        valor: 0,                 icon: <PieChart size={14}/>,  cor: "text-slate-500",   nota: "não cadastrado" },
+                { label: "Ações/FIIs",   valor: totalAcoes,        icon: <PieChart size={14}/>,  cor: "text-indigo-400",  nota: "custo de aquisição" },
+                { label: "FGTS",         valor: saldoFGTS,         icon: <Briefcase size={14}/>,cor: "text-orange-400",  nota: "Fundação Univ. Oeste SC" },
+                { label: "Bens",         valor: BENS_PLACEHOLDER,  icon: <Home size={14}/>,      cor: "text-rose-400",    nota: "estimativa · módulo em breve" },
               ].map((item, i) => (
                 <div key={i}
-                  className={`bg-white/5 border border-white/10 rounded-xl p-3 cursor-pointer hover:bg-white/10 transition-colors ${item.label === "Previdência" ? "border-amber-400/30" : ""}`}
-                  onClick={() => item.label === "Previdência" ? selecionarSubInvestimento("previdencia") : undefined}
+                  className={`bg-white/5 border border-white/10 rounded-xl p-3 transition-colors
+                    ${item.label === "Previdência" ? "border-amber-400/30 cursor-pointer hover:bg-white/10" : ""}
+                    ${item.label === "Ações/FIIs" ? "cursor-pointer hover:bg-white/10" : ""}
+                    ${item.label === "Caixinhas" ? "cursor-pointer hover:bg-white/10" : ""}
+                    ${item.label === "Consórcio" ? "cursor-pointer hover:bg-white/10" : ""}
+                    ${item.label === "Apt 810" ? "cursor-pointer hover:bg-white/10" : ""}
+                    ${item.label === "Casa" ? "cursor-pointer hover:bg-white/10" : ""}
+                    ${item.label === "FGTS" ? "cursor-pointer hover:bg-white/10" : ""}
+                  `}
+                  onClick={() => {
+                    if (item.label === "Previdência") selecionarSubInvestimento("previdencia");
+                    else if (item.label === "Ações/FIIs") selecionarSubInvestimento("acoes");
+                    else if (item.label === "Caixinhas") selecionarSubInvestimento("caixinhas");
+                    else if (item.label === "Consórcio") selecionarSubInvestimento("consorcios");
+                    else if (item.label === "Apt 810") selecionarSubImovel("apartamento");
+                    else if (item.label === "Casa") selecionarSubImovel("casa");
+                    else if (item.label === "FGTS") selecionarSubInvestimento("fgts");
+                  }}
                 >
                   <div className={`flex items-center gap-1.5 ${item.cor} mb-2`}>
                     {item.icon}
                     <span className="text-[10px] font-black uppercase tracking-wider">{item.label}</span>
-                    {item.label === "Previdência" && <span className="ml-auto text-[8px] opacity-50">↗</span>}
+                    <span className="ml-auto text-[8px] opacity-40">↗</span>
                   </div>
                   <p className={`text-base font-black tabular-nums ${item.valor === 0 ? "text-slate-600" : "text-white"}`}>
                     {fmt(item.valor)}
@@ -645,6 +679,7 @@ export default function App() {
           {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios"  && <Consorcios />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"   && <Caixinhas />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "previdencia" && <PrevidenciaPainel />}
+          {abaAtiva === "investimentos" && subAbaInvestimento === "fgts"        && <FGTSPainel />}
         </main>
       </div>
     </PasswordGate>
