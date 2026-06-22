@@ -11,6 +11,7 @@ import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
 import Consorcios from "./views/Consorcios";
 import Caixinhas from "./views/Caixinhas";
 import PrevidenciaPainel from "./views/PrevidenciaPainel";
+import FGTSPainel from "./views/FGTSPainel";
 import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
