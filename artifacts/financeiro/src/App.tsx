@@ -11,12 +11,11 @@ import CarteiraInvestimentos from "./views/CarteiraInvestimentos";
 import Consorcios from "./views/Consorcios";
 import Caixinhas from "./views/Caixinhas";
 import PrevidenciaPainel from "./views/PrevidenciaPainel";
-import FGTSPainel from "./views/FGTSPainel"; // Adicione esta linha
 import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Shield, Target, Calendar,
-  ArrowRight, BedDouble, Trees, BarChart2, Briefcase, // Add Briefcase here
+  ArrowRight, BedDouble, Trees, BarChart2, Briefcase
 } from "lucide-react";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -281,57 +280,38 @@ export default function App() {
           </div>
         </div>
 
-        {/* PATRIMÔNIO — agora com 6 itens incluindo Previdência */}
-        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-xl">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
-              <p className="text-4xl font-black tabular-nums text-white">{fmt(patrimonioTotal)}</p>
-              <p className="text-xs text-slate-500 font-semibold mt-1">Imóvel + Caixinhas + Consórcio + Previdência + FGTS + Bens</p>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
-              {[
-                { label: "Apt 810",      valor: imovelPago,        icon: <Home size={14}/>,      cor: "text-cyan-400",    nota: "pago até hoje" },
-                { label: "Caixinhas",    valor: totalCaixinhas,    icon: <PiggyBank size={14}/>, cor: "text-emerald-400", nota: `${caixinhas.length} cofrinhos` },
-                { label: "Consórcio",    valor: totalConsorcios,   icon: <Shield size={14}/>,    cor: "text-violet-400",  nota: "crédito total" },
-                { label: "Casa",         valor: casaPago,          icon: <Home size={14}/>,      cor: "text-emerald-400", nota: "Jardim Mirante" },
-                { label: "Previdência",  valor: saldoPrevidencia,  icon: <Shield size={14}/>,    cor: "text-amber-400",   nota: `+${rentabilidadePrev}% sobre aportes` },
-                { label: "Ações/FIIs",   valor: totalAcoes,        icon: <PieChart size={14}/>,  cor: "text-indigo-400",  nota: "custo de aquisição" },
-                { label: "FGTS",         valor: saldoFGTS,         icon: <Briefcase size={14}/>,cor: "text-orange-400",  nota: "Fundação Univ. Oeste SC" },
-                { label: "Bens",         valor: BENS_PLACEHOLDER,  icon: <Home size={14}/>,      cor: "text-rose-400",    nota: "estimativa · módulo em breve" },
-              ].map((item, i) => (
-                <div key={i}
-                  className={`bg-white/5 border border-white/10 rounded-xl p-3 transition-colors
-                    ${item.label === "Previdência" ? "border-amber-400/30 cursor-pointer hover:bg-white/10" : ""}
-                    ${item.label === "Ações/FIIs" ? "cursor-pointer hover:bg-white/10" : ""}
-                    ${item.label === "Caixinhas" ? "cursor-pointer hover:bg-white/10" : ""}
-                    ${item.label === "Consórcio" ? "cursor-pointer hover:bg-white/10" : ""}
-                    ${item.label === "Apt 810" ? "cursor-pointer hover:bg-white/10" : ""}
-                    ${item.label === "Casa" ? "cursor-pointer hover:bg-white/10" : ""}
-                    ${item.label === "FGTS" ? "cursor-pointer hover:bg-white/10" : ""}
-                  `}
-                  onClick={() => {
-                    if (item.label === "Previdência") selecionarSubInvestimento("previdencia");
-                    else if (item.label === "Ações/FIIs") selecionarSubInvestimento("acoes");
-                    else if (item.label === "Caixinhas") selecionarSubInvestimento("caixinhas");
-                    else if (item.label === "Consórcio") selecionarSubInvestimento("consorcios");
-                    else if (item.label === "Apt 810") selecionarSubImovel("apartamento");
-                    else if (item.label === "Casa") selecionarSubImovel("casa");
-                    else if (item.label === "FGTS") selecionarSubInvestimento("fgts");
-                  }}
-                >
-                  <div className={`flex items-center gap-1.5 ${item.cor} mb-2`}>
-                    {item.icon}
-                    <span className="text-[10px] font-black uppercase tracking-wider">{item.label}</span>
-                    <span className="ml-auto text-[8px] opacity-40">↗</span>
-                  </div>
-                  <p className={`text-base font-black tabular-nums ${item.valor === 0 ? "text-slate-600" : "text-white"}`}>
-                    {fmt(item.valor)}
-                  </p>
-                  <p className="text-[9px] text-slate-500 font-semibold mt-0.5">{item.nota}</p>
-                </div>
-              ))}
-            </div>
+        {/* PATRIMÔNIO */}
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          {/* Total */}
+          <div className="px-6 pt-6 pb-5 border-b border-white/5">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
+            <p className="text-5xl font-black tabular-nums text-white tracking-tight">{fmt(patrimonioTotal)}</p>
+          </div>
+          {/* Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
+            {[
+              { label: "Apt 810",     valor: imovelPago,       cor: "text-cyan-400",    acao: () => selecionarSubImovel("apartamento") },
+              { label: "Casa",        valor: casaPago,         cor: "text-teal-400",    acao: () => selecionarSubImovel("casa") },
+              { label: "Consórcio",   valor: totalConsorcios,  cor: "text-violet-400",  acao: () => selecionarSubInvestimento("consorcios") },
+              { label: "Caixinhas",   valor: totalCaixinhas,   cor: "text-emerald-400", acao: () => selecionarSubInvestimento("caixinhas") },
+              { label: "Previdência", valor: saldoPrevidencia, cor: "text-amber-400",   acao: () => selecionarSubInvestimento("previdencia") },
+              { label: "Ações/FIIs",  valor: totalAcoes,       cor: "text-indigo-400",  acao: () => selecionarSubInvestimento("acoes") },
+              { label: "FGTS",        valor: saldoFGTS,        cor: "text-orange-400",  acao: () => selecionarSubInvestimento("fgts") },
+              { label: "Bens",        valor: BENS_PLACEHOLDER, cor: "text-rose-400",    acao: undefined },
+            ].map((item, i) => (
+              <button key={i}
+                onClick={item.acao}
+                className={`group flex flex-col gap-1.5 px-4 py-4 border-r border-white/5 last:border-r-0 text-left transition-colors ${item.acao ? "hover:bg-white/5 cursor-pointer" : "cursor-default"} ${i >= 4 ? "border-t border-white/5" : ""}`}
+              >
+                <span className={`text-[10px] font-black uppercase tracking-widest ${item.cor} flex items-center gap-1`}>
+                  {item.label}
+                  {item.acao && <span className="opacity-0 group-hover:opacity-60 transition-opacity text-[8px]">↗</span>}
+                </span>
+                <span className={`text-sm font-black tabular-nums ${item.valor === 0 ? "text-slate-600" : "text-white"}`}>
+                  {fmt(item.valor)}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
 
