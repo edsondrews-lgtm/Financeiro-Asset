@@ -12,11 +12,13 @@ import Consorcios from "./views/Consorcios";
 import Caixinhas from "./views/Caixinhas";
 import PrevidenciaPainel from "./views/PrevidenciaPainel";
 import FGTSPainel from "./views/FGTSPainel";
+import Bens from "./views/Bens";
+import ApostasPainel from "./views/ApostasPainel";
 import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Shield, Target, Calendar,
-  ArrowRight, BedDouble, Trees, BarChart2, Briefcase
+  ArrowRight, BedDouble, Trees, BarChart2, Briefcase, Coins
 } from "lucide-react";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -56,8 +58,8 @@ export default function App() {
   const [totalAcoes,         setTotalAcoes]          = useState(0);
   // FGTS
   const [saldoFGTS,          setSaldoFGTS]           = useState(0);
-  // Bens (placeholder até módulo)
-  const BENS_PLACEHOLDER = 200000;
+  // Bens
+  const [bens,               setBens]                = useState<any[]>([]);
   // Imóvel
   const [imovelPago,            setImovelPago]            = useState(0);
   const [casaPago,              setCasaPago]              = useState(0);
@@ -86,7 +88,7 @@ export default function App() {
         rNotas, rDespesas, rEntradas, rSaidas,
         rCaixinhas, rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
-        rPrevRend, rPrevAportes, rAcoes, rFGTS,
+        rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
       ] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
@@ -105,6 +107,7 @@ export default function App() {
         supabase.from("previdencia_aportes").select("valor"),
         supabase.from("carteira_investimentos").select("preco_medio,quantidade"),
         supabase.from("fgts_lancamentos").select("saldo_total").order("data",{ascending:false}).limit(1),
+        supabase.from("bens").select("valor_estimado"),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
@@ -139,6 +142,9 @@ export default function App() {
       }
       if (rFGTS.data && rFGTS.data[0]?.saldo_total) {
         setSaldoFGTS(Number(rFGTS.data[0].saldo_total));
+      }
+      if (rBens.data) {
+        setBens(rBens.data);
       }
 
       const totalCasa = (rCasaAportes.data || []).reduce((s: number, a: any) => s + (Number(a.valor) || 0), 0);
@@ -197,8 +203,10 @@ export default function App() {
   const totalCaixinhas  = caixinhas.reduce((s, c) => s + (Number(c.valor_atual) || 0), 0);
   const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem)  || 0), 0);
 
+  const totalBens = bens.reduce((s: number, b: any) => s + (Number(b.valor_estimado) || 0), 0);
+
   // ── patrimônio agora inclui previdência ──────────────────────────────────
-  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios + saldoPrevidencia + totalAcoes + saldoFGTS + BENS_PLACEHOLDER;
+  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios + saldoPrevidencia + totalAcoes + saldoFGTS + totalBens;
 
   const faturamentoAno  = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
@@ -220,6 +228,8 @@ export default function App() {
   const navItems = [
     { id: "geral",   label: "Painel Geral", icon: <LayoutDashboard size={14}/> },
     { id: "empresa", label: "Empresa",      icon: <Building2 size={14}/> },
+    { id: "bens",    label: "Bens",         icon: <Coins size={14}/> },
+    { id: "apostas", label: "Apostas",      icon: <Target size={14}/> },
   ];
 
   const subItensImovel = [
@@ -298,7 +308,7 @@ export default function App() {
               { label: "Previdência", valor: saldoPrevidencia, cor: "text-amber-400",   acao: () => selecionarSubInvestimento("previdencia") },
               { label: "Ações/FIIs",  valor: totalAcoes,       cor: "text-indigo-400",  acao: () => selecionarSubInvestimento("acoes") },
               { label: "FGTS",        valor: saldoFGTS,        cor: "text-orange-400",  acao: () => selecionarSubInvestimento("fgts") },
-              { label: "Bens",        valor: BENS_PLACEHOLDER, cor: "text-rose-400",    acao: undefined },
+              { label: "Bens",        valor: totalBens,        cor: "text-rose-400",    acao: () => setAbaAtiva("bens") },
             ].map((item, i) => (
               <button key={i}
                 onClick={item.acao}
@@ -651,6 +661,8 @@ export default function App() {
         <main>
           {abaAtiva === "geral"   && <PainelGeral />}
           {abaAtiva === "empresa" && <ControleEmpresa />}
+          {abaAtiva === "bens"    && <Bens />}
+          {abaAtiva === "apostas" && <ApostasPainel />}
           {abaAtiva === "imoveis" && subAbaImovel === "apartamento" && <Apartamento />}
           {abaAtiva === "imoveis" && subAbaImovel === "casa"        && <CasaJardimMirante />}
           {abaAtiva === "pessoal" && subAbaPessoal === "resumo"     && <ResumoPessoal />}
