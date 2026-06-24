@@ -98,6 +98,8 @@
 .dark-theme .text-blue-700 {
   color: #60a5fa !important;
 }
+.dark-theme .text-indigo-800,
+.dark-theme .text-indigo-700,
 .dark-theme .text-indigo-600,
 .dark-theme .text-indigo-500 {
   color: #818cf8 !important;
