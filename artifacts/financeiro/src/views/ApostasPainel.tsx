@@ -237,7 +237,7 @@ export default function ApostasPainel() {
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-5">
+      <div className="p-10 space-y-8 max-w-7xl mx-auto">
 
         {/* Toast */}
         {toast && (
@@ -252,7 +252,7 @@ export default function ApostasPainel() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl text-white shadow-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+            <div className="p-3 rounded-2xl shadow-lg" style={{ backgroundColor: 'var(--accent)', color: '#fff' }}>
               <Target size={20}/>
             </div>
             <div>
