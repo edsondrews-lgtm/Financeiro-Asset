@@ -14,6 +14,7 @@ import PrevidenciaPainel from "./views/PrevidenciaPainel";
 import FGTSPainel from "./views/FGTSPainel";
 import Bens from "./views/Bens";
 import ApostasPainel from "./views/ApostasPainel";
+import ExtratosBancarios from "./views/ExtratosBancarios";
 import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
@@ -264,6 +265,7 @@ export default function App() {
     { id: "resumo",   label: "Resumo",   icon: <BarChart2 size={13}/> },
     { id: "entradas", label: "Entradas", icon: <TrendingUp size={13}/> },
     { id: "saidas",   label: "Saídas",   icon: <CreditCard size={13}/> },
+    { id: "bancos",   label: "Bancos",   icon: <FileText size={13}/> },
   ];
 
   function selecionarSubImovel(sub: string)       { setSubAbaImovel(sub);       setAbaAtiva("imoveis");       setMenuImovelAberto(false); }
@@ -697,6 +699,7 @@ export default function App() {
           {abaAtiva === "pessoal" && subAbaPessoal === "resumo"     && <ResumoPessoal />}
           {abaAtiva === "pessoal" && subAbaPessoal === "entradas"   && <EntradasPessoais />}
           {abaAtiva === "pessoal" && subAbaPessoal === "saidas"     && <SaidasPainel />}
+          {abaAtiva === "pessoal" && subAbaPessoal === "bancos"     && <ExtratosBancarios />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"       && <CarteiraInvestimentos />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios"  && <Consorcios />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"   && <Caixinhas />}
