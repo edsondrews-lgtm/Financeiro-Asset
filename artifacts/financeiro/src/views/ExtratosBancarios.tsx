@@ -276,6 +276,12 @@ export default function ExtratosBancarios() {
   }, {})
   const catRanking = Object.entries(categoriasAgrupadas).sort((a, b) => b[1] - a[1])
   const maxCat = catRanking.length > 0 ? Math.max(...catRanking.map(c => c[1])) : 0
+  const creditosAgrupados = extratosFiltrados.filter(e => e.tipo === 'credito').reduce<Record<string, number>>((acc, e) => {
+    acc[e.categoria] = (acc[e.categoria] || 0) + e.valor
+    return acc
+  }, {})
+  const credRanking = Object.entries(creditosAgrupados).sort((a, b) => b[1] - a[1])
+  const maxCred = credRanking.length > 0 ? Math.max(...credRanking.map(c => c[1])) : 0
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
@@ -391,7 +397,43 @@ export default function ExtratosBancarios() {
         </div>
       </div>
 
-      {/* Ranking de Categorias */}
+      {/* Ranking Receitas */}
+      {credRanking.length > 0 && (
+        <div className="rounded-2xl border p-5 space-y-3" style={{
+          backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
+        }}>
+          <div className="flex items-center gap-2">
+            <TrendingUp size={14} style={{ color: 'var(--text-muted)' }} />
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>De onde veio o dinheiro</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {credRanking.map(([cat, valor]) => {
+              const cfg = CATEGORIA_CONFIG[cat] || CATEGORIA_CONFIG['Outros']
+              const pct = maxCred > 0 ? (valor / maxCred) * 100 : 0
+              return (
+                <div key={cat} className="flex items-center gap-3 p-2 rounded-xl transition-colors hover:bg-slate-50"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setCatFiltro(catFiltro === cat ? '' : cat)}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs" style={{ backgroundColor: cfg.bg }}>
+                    {cfg.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{cat}</span>
+                      <span className="text-xs font-black text-emerald-600">{fmt(valor)}</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: '#059669' }} />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Ranking Despesas */}
       {catRanking.length > 0 && (
         <div className="rounded-2xl border p-5 space-y-3" style={{
           backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
