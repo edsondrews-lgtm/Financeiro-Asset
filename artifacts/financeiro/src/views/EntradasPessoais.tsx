@@ -280,15 +280,15 @@ export default function EntradasPessoais() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Total do mês</p>
-            <p className="text-2xl font-black text-emerald-600 tabular-nums">R$ {fmtBRL(total)}</p>
+            <p className="text-2xl font-black text-emerald-600 tabular-nums privado">R$ {fmtBRL(total)}</p>
           </div>
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pró-labore</p>
-            <p className="text-2xl font-black text-sky-700 tabular-nums">R$ {fmtBRL(totalPL)}</p>
+            <p className="text-2xl font-black text-sky-700 tabular-nums privado">R$ {fmtBRL(totalPL)}</p>
           </div>
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Dividendos</p>
-            <p className={`text-2xl font-black tabular-nums ${totalDiv > 0 ? 'text-teal-700' : 'text-slate-300'}`}>
+            <p className={`text-2xl font-black tabular-nums ${totalDiv > 0 ? 'text-teal-700' : 'text-slate-300'} privado`}>
               R$ {fmtBRL(totalDiv)}
             </p>
           </div>
@@ -332,7 +332,7 @@ export default function EntradasPessoais() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-slate-400">{pct}%</span>
-                        <span className="font-black text-slate-800 w-24 text-right">R$ {fmtBRL(val)}</span>
+                        <span className="font-black text-slate-800 w-24 text-right privado">R$ {fmtBRL(val)}</span>
                       </div>
                     </div>
                     <div className="w-full h-1 rounded-full bg-slate-100">
@@ -386,7 +386,7 @@ export default function EntradasPessoais() {
                         <td className="py-3 pr-3">
                           {e.recorrente && <span className="text-[9px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded font-bold uppercase">Fixo</span>}
                         </td>
-                        <td className="py-3 text-xs font-black text-emerald-600 text-right pr-3">+ R$ {fmtBRL(Number(e.valor))}</td>
+                        <td className="py-3 text-xs font-black text-emerald-600 text-right pr-3 privado">+ R$ {fmtBRL(Number(e.valor))}</td>
                         <td className="py-3 text-right">
                           <div className="flex justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
                             <button onClick={() => editar(e)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors"><Edit2 size={12}/></button>

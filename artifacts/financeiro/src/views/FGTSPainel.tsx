@@ -222,19 +222,19 @@ export default function FGTSPainel() {
             {/* Hero */}
             <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl p-6 text-white shadow-xl">
               <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mb-2">Saldo atual · Mai/2026</p>
-              <p className="text-4xl font-black tracking-tight">R$ {fmtBRL(saldoAtual)}</p>
+              <p className="text-4xl font-black tracking-tight privado">R$ {fmtBRL(saldoAtual)}</p>
               <div className="grid grid-cols-3 gap-4 mt-5">
                 <div>
                   <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Total depositado</p>
-                  <p className="text-lg font-black">R$ {fmtBRL(totalDepositos)}</p>
+                  <p className="text-lg font-black privado">R$ {fmtBRL(totalDepositos)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Total rendido</p>
-                  <p className="text-lg font-black">R$ {fmtBRL(totalRendidoTotal)}</p>
+                  <p className="text-lg font-black privado">R$ {fmtBRL(totalRendidoTotal)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Rend. médio/mês</p>
-                  <p className="text-lg font-black">R$ {fmtBRL(rendMedioMensal)}</p>
+                  <p className="text-lg font-black privado">R$ {fmtBRL(rendMedioMensal)}</p>
                   <p className="text-[9px] opacity-50">últimos 12 meses</p>
                 </div>
               </div>
@@ -251,7 +251,7 @@ export default function FGTSPainel() {
                 <div key={k.label} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                   <div className={`p-1.5 rounded-lg w-fit mb-3 ${k.bg}`}>{k.icon}</div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{k.label}</p>
-                  <p className={`text-xl font-black ${k.color}`}>{k.value}</p>
+                  <p className={`text-xl font-black ${k.color} privado`}>{k.value}</p>
                   <p className="text-[10px] text-slate-400 mt-1">{k.sub}</p>
                 </div>
               ))}
@@ -269,12 +269,12 @@ export default function FGTSPainel() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="p-4 bg-rose-50 rounded-xl border border-rose-100">
                   <p className="text-[10px] font-black text-rose-400 uppercase tracking-wider mb-1">Valor do extrato (Mai/2026)</p>
-                  <p className="text-2xl font-black text-rose-700">R$ {fmtBRL(multaRescisoriaValor)}</p>
+                        <p className="text-2xl font-black text-rose-700 privado">R$ {fmtBRL(multaRescisoriaValor)}</p>
                   <p className="text-[10px] text-rose-400 mt-1">Informado pela Caixa Econômica</p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Cálculo estimado (40% do saldo)</p>
-                  <p className="text-2xl font-black text-slate-700">R$ {fmtBRL(multaRescisoriaCalc)}</p>
+                        <p className="text-2xl font-black text-slate-700 privado">R$ {fmtBRL(multaRescisoriaCalc)}</p>
                   <p className="text-[10px] text-slate-400 mt-1">40% × R$ {fmtBRL(saldoAtual)}</p>
                 </div>
                 <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
@@ -347,12 +347,12 @@ export default function FGTSPainel() {
                       <span className="text-[10px] font-bold text-slate-300 w-4 text-right">{i+1}</span>
                       <span className="text-xs font-semibold text-slate-600 flex-1">{l.descricao}</span>
                       <span className="text-[10px] text-slate-400">{fmtData(l.data)}</span>
-                      <span className="text-xs font-black text-violet-700">+ R$ {fmtBRL(Number(l.valor))}</span>
+                      <span className="text-xs font-black text-violet-700 privado">+ R$ {fmtBRL(Number(l.valor))}</span>
                     </div>
                   ))}
                   <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                     <span className="text-xs font-bold text-slate-500">Total distribuído</span>
-                    <span className="text-sm font-black text-violet-700">R$ {fmtBRL(totalDistribuicao)}</span>
+                    <span className="text-sm font-black text-violet-700 privado">R$ {fmtBRL(totalDistribuicao)}</span>
                   </div>
                 </div>
               </div>
@@ -370,7 +370,7 @@ export default function FGTSPainel() {
                   <div className="mt-2 space-y-1">
                     {lancamentos.filter(l => l.tipo === 'SAQUE').map(l => (
                       <p key={l.id} className="text-[11px] text-amber-800 font-semibold">
-                        • {fmtData(l.data)} — {l.descricao} — <span className="text-rose-600">- R$ {fmtBRL(Math.abs(Number(l.valor)))}</span>
+                        • {fmtData(l.data)} — {l.descricao} — <span className="text-rose-600 privado">- R$ {fmtBRL(Math.abs(Number(l.valor)))}</span>
                         {l.observacao && <span className="text-amber-600 font-normal"> ({l.observacao})</span>}
                       </p>
                     ))}
@@ -451,10 +451,10 @@ export default function FGTSPainel() {
                               </span>
                             </td>
                             <td className="py-2.5 text-xs text-slate-700 font-semibold pr-3 max-w-[220px] truncate">{l.descricao}</td>
-                            <td className={`py-2.5 text-xs font-black pr-3 whitespace-nowrap ${isNeg ? 'text-rose-600' : 'text-emerald-700'}`}>
+                            <td className={`py-2.5 text-xs font-black pr-3 whitespace-nowrap ${isNeg ? 'text-rose-600' : 'text-emerald-700'} privado`}>
                               {isNeg ? '− ' : '+ '}R$ {fmtBRL(Math.abs(Number(l.valor)))}
                             </td>
-                            <td className="py-2.5 text-xs text-slate-600 font-semibold pr-3 whitespace-nowrap">
+                            <td className="py-2.5 text-xs text-slate-600 font-semibold pr-3 whitespace-nowrap privado">
                               {l.saldo_total ? `R$ ${fmtBRL(Number(l.saldo_total))}` : '—'}
                             </td>
                             <td className="py-2.5 pr-3">

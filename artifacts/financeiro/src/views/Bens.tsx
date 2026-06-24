@@ -201,7 +201,7 @@ function CardBem({ bem, onAtualizar }: { bem: Bem; onAtualizar: () => void }) {
 
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-4">
           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Valor Estimado</div>
-          <div className="text-2xl font-black text-white mt-1">{fmt(bem.valor_estimado)}</div>
+          <div className="text-2xl font-black text-white mt-1 privado">{fmt(bem.valor_estimado)}</div>
         </div>
 
         <div className="flex flex-wrap gap-3 text-xs text-slate-400">
@@ -286,7 +286,7 @@ export default function Bens() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-5 rounded-2xl text-white shadow-sm">
             <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total em Bens</div>
-            <div className="text-2xl font-black text-white mt-1">{fmt(totalBens)}</div>
+            <div className="text-2xl font-black text-white mt-1 privado">{fmt(totalBens)}</div>
             <div className="text-[10px] text-slate-400 mt-0.5">{bens.length} bem{bens.length !== 1 ? 's' : ''} cadastrado{bens.length !== 1 ? 's' : ''}</div>
           </div>
           {totalPorCategoria.slice(0, 3).map(cat => {
@@ -295,7 +295,7 @@ export default function Bens() {
               <div key={cat.value} className={`bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between`}>
                 <div>
                   <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">{cat.label}</div>
-                  <div className="text-xl font-black text-slate-800 mt-1">{fmt(cat.total)}</div>
+                  <div className="text-xl font-black text-slate-800 mt-1 privado">{fmt(cat.total)}</div>
                   <div className="text-[10px] text-slate-400 mt-0.5">{cat.count} item{cat.count !== 1 ? 'ens' : ''}</div>
                 </div>
                 <div className={`p-3 bg-${cat.cor}-50 text-${cat.cor}-600 rounded-xl`}>

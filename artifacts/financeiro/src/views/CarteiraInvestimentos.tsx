@@ -273,7 +273,7 @@ export default function CarteiraInvestimentos() {
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div className="space-y-2">
               <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Total Investido</span>
-              <h3 className="text-2xl font-black text-slate-800">{fmt(totalInvestido)}</h3>
+              <h3 className="text-2xl font-black text-slate-800 privado">{fmt(totalInvestido)}</h3>
               <span className="text-[10px] text-slate-500 font-medium">Custo de aquisição</span>
             </div>
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Wallet size={20} /></div>
@@ -281,7 +281,7 @@ export default function CarteiraInvestimentos() {
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div className="space-y-2">
               <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Valor Atual</span>
-              <h3 className="text-2xl font-black text-slate-800">{fmt(totalAtual)}</h3>
+              <h3 className="text-2xl font-black text-slate-800 privado">{fmt(totalAtual)}</h3>
               <span className="text-[10px] text-slate-500 font-medium">Posição a mercado</span>
             </div>
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><TrendingUp size={20} /></div>
@@ -289,7 +289,7 @@ export default function CarteiraInvestimentos() {
           <div className={`bg-white p-6 rounded-2xl border shadow-sm flex items-center justify-between ${totalLucro >= 0 ? "border-emerald-100" : "border-red-100"}`}>
             <div className="space-y-2">
               <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Lucro / Prejuízo</span>
-              <h3 className={`text-2xl font-black ${totalLucro >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(totalLucro)}</h3>
+              <h3 className={`text-2xl font-black ${totalLucro >= 0 ? "text-emerald-600" : "text-red-500"} privado`}>{fmt(totalLucro)}</h3>
               <span className="text-[10px] text-slate-500 font-medium">Resultado acumulado</span>
             </div>
             <div className={`p-3 rounded-xl ${totalLucro >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
@@ -426,11 +426,11 @@ export default function CarteiraInvestimentos() {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right text-slate-600 font-medium">{ativo.quantidade.toLocaleString("pt-BR")}</td>
-                      <td className="px-4 py-4 text-right text-slate-600">{fmt(ativo.preco_medio)}</td>
+                      <td className="px-4 py-4 text-right text-slate-600 privado">{fmt(ativo.preco_medio)}</td>
                       <td className="px-4 py-4 text-right">
                         {ativo.carregando_cotacao ? <span className="text-slate-300 text-xs">carregando…</span>
                           : ativo.erro_cotacao ? <span className="text-red-400 text-xs">erro</span>
-                          : ativo.preco_atual !== undefined ? <span className="font-bold text-slate-800">{fmt(ativo.preco_atual)}</span>
+                          : ativo.preco_atual !== undefined ? <span className="font-bold text-slate-800 privado">{fmt(ativo.preco_atual)}</span>
                           : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-4 text-right">
@@ -438,12 +438,12 @@ export default function CarteiraInvestimentos() {
                           ? <span className={`text-xs font-bold ${ativo.variacao_dia >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtPct(ativo.variacao_dia)}</span>
                           : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="px-4 py-4 text-right text-slate-600 font-medium">
+                      <td className="px-4 py-4 text-right text-slate-600 font-medium privado">
                         {ativo.valor_total !== undefined ? fmt(ativo.valor_total) : fmt(ativo.preco_medio * ativo.quantidade)}
                       </td>
                       <td className="px-4 py-4 text-right">
                         {ativo.lucro_prejuizo !== undefined
-                          ? <span className={`font-bold ${ativo.lucro_prejuizo >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(ativo.lucro_prejuizo)}</span>
+                          ? <span className={`font-bold ${ativo.lucro_prejuizo >= 0 ? "text-emerald-600" : "text-red-500"} privado`}>{fmt(ativo.lucro_prejuizo)}</span>
                           : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-4 text-right">

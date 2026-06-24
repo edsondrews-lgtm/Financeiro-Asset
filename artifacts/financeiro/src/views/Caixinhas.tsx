@@ -263,7 +263,7 @@ function ModalAporte({ caixinha, onFechar, onConfirmar }: {
             </div>
             {parseFloat(valor) !== 0 && !isNaN(parseFloat(valor)) && (
               <p className={`text-xs mt-1 font-medium ${parseFloat(valor) > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                Novo saldo: {fmt(caixinha.valor_atual + parseFloat(valor))}
+                Novo saldo: <span className="privado">{fmt(caixinha.valor_atual + parseFloat(valor))}</span>
               </p>
             )}
           </div>
@@ -331,16 +331,16 @@ function ModalHistorico({ caixinha, aportesIniciais, cdiMap, cdiUltimo, onFechar
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-slate-50 rounded-xl p-3 text-center">
             <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Depositado</div>
-            <div className="text-base font-black text-slate-700 mt-0.5">{fmt(totalDepositado)}</div>
+            <div className="text-base font-black text-slate-700 mt-0.5 privado">{fmt(totalDepositado)}</div>
           </div>
           <div className="bg-emerald-50 rounded-xl p-3 text-center">
             <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Rendimento Projetado</div>
-            <div className="text-base font-black text-emerald-700 mt-0.5">+{fmt(totalRendimento)}</div>
+            <div className="text-base font-black text-emerald-700 mt-0.5 privado">+{fmt(totalRendimento)}</div>
             <div className="text-[10px] text-emerald-500">i = {(iDiaria * 100).toFixed(4)}%/dia</div>
           </div>
           <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-3 text-center">
             <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo Projetado</div>
-            <div className="text-base font-black text-white mt-0.5">{fmt(saldoProjetado)}</div>
+            <div className="text-base font-black text-white mt-0.5 privado">{fmt(saldoProjetado)}</div>
           </div>
         </div>
 
@@ -375,22 +375,22 @@ function ModalHistorico({ caixinha, aportesIniciais, cdiMap, cdiUltimo, onFechar
                 {linhas.map(l => (
                   <tr key={l.aporte.id} className="hover:bg-slate-50/70">
                     <td className="py-3 pr-3 text-slate-600 font-medium">{fmtDate(l.aporte.data_aporte)}</td>
-                    <td className="py-3 pr-3 text-right text-slate-700 font-semibold">{fmt(l.valorInicial)}</td>
+                    <td className="py-3 pr-3 text-right text-slate-700 font-semibold privado">{fmt(l.valorInicial)}</td>
                     <td className="py-3 pr-3 text-right">
                       <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">{l.dias}d</span>
                     </td>
-                    <td className="py-3 pr-3 text-right font-bold text-emerald-600">+{fmt(l.rendimento)}</td>
-                    <td className="py-3 text-right font-black text-slate-800">{fmt(l.valorFinal)}</td>
+                    <td className="py-3 pr-3 text-right font-bold text-emerald-600 privado">+{fmt(l.rendimento)}</td>
+                    <td className="py-3 text-right font-black text-slate-800 privado">{fmt(l.valorFinal)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="border-t-2 border-slate-200 bg-slate-50 sticky bottom-0">
                 <tr>
                   <td className="py-3 pr-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</td>
-                  <td className="py-3 pr-3 text-right font-black text-slate-700">{fmt(totalDepositado)}</td>
+                  <td className="py-3 pr-3 text-right font-black text-slate-700 privado">{fmt(totalDepositado)}</td>
                   <td className="py-3 pr-3 text-right text-slate-300">—</td>
-                  <td className="py-3 pr-3 text-right font-black text-emerald-600">+{fmt(totalRendimento)}</td>
-                  <td className="py-3 text-right font-black text-slate-900 text-sm">{fmt(saldoProjetado)}</td>
+                  <td className="py-3 pr-3 text-right font-black text-emerald-600 privado">+{fmt(totalRendimento)}</td>
+                  <td className="py-3 text-right font-black text-slate-900 text-sm privado">{fmt(saldoProjetado)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -411,11 +411,11 @@ function ModalHistorico({ caixinha, aportesIniciais, cdiMap, cdiUltimo, onFechar
                 {[...aportes].reverse().map(a => (
                   <tr key={a.id} className="hover:bg-slate-50/70">
                     <td className="py-3 pr-3 text-slate-500">{fmtDate(a.data_aporte)}</td>
-                    <td className={`py-3 pr-3 text-right font-bold ${a.valor_adicionado >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    <td className={`py-3 pr-3 text-right font-bold ${a.valor_adicionado >= 0 ? 'text-emerald-600' : 'text-rose-500'} privado`}>
                       {a.valor_adicionado >= 0 ? '+' : ''}{fmt(a.valor_adicionado)}
                     </td>
-                    <td className="py-3 pr-3 text-right text-slate-400">{fmt(a.valor_anterior)}</td>
-                    <td className="py-3 pr-3 text-right font-bold text-slate-700">{fmt(a.valor_apos)}</td>
+                    <td className="py-3 pr-3 text-right text-slate-400 privado">{fmt(a.valor_anterior)}</td>
+                    <td className="py-3 pr-3 text-right font-bold text-slate-700 privado">{fmt(a.valor_apos)}</td>
                     <td className="py-3 pr-3 text-slate-400 italic">{a.observacao || '—'}</td>
                     <td className="py-3 text-right">
                       <button onClick={() => removerAporte(a.id)}
@@ -581,7 +581,7 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
             <h3 className="text-sm font-bold text-slate-800 leading-tight">{caixinha.nome}</h3>
           </div>
           {meta > 0 && (
-            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full whitespace-nowrap">
+            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full whitespace-nowrap privado">
               Meta: {fmt(meta)}
             </span>
           )}
@@ -590,7 +590,7 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
         {/* Saldo corrigido — destaque principal */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-4 space-y-1">
           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Saldo c/ rendimento</div>
-          <div className="text-3xl font-black text-white">{fmt(saldoProjetado > 0 ? saldoProjetado : caixinha.valor_atual)}</div>
+          <div className="text-3xl font-black text-white privado">{fmt(saldoProjetado > 0 ? saldoProjetado : caixinha.valor_atual)}</div>
           {cdiUltimo > 0 && (
             <div className="text-xs text-slate-400">
               i = <span className="text-slate-300 font-semibold">{cdiUltimo.toFixed(4)}%/dia</span>
@@ -603,7 +603,7 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
               <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Rendimento acumulado</div>
-              <div className="text-lg font-black text-emerald-700 mt-0.5">+{fmt(rendimentoReal)}</div>
+              <div className="text-lg font-black text-emerald-700 mt-0.5 privado">+{fmt(rendimentoReal)}</div>
               {primeiroDep && (
                 <div className="text-[10px] text-emerald-500 mt-0.5">
                   em {diasDecorridos} dia{diasDecorridos !== 1 ? 's' : ''} · {aportesPositivos.length} aporte{aportesPositivos.length !== 1 ? 's' : ''}
@@ -612,7 +612,7 @@ function CardCaixinha({ caixinha, aportes, cdiMap, cdiUltimo, onAtualizar }: {
             </div>
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
               <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Saldo depositado</div>
-              <div className="text-lg font-black text-blue-700 mt-0.5">{fmt(totalDepositado)}</div>
+              <div className="text-lg font-black text-blue-700 mt-0.5 privado">{fmt(totalDepositado)}</div>
               <div className="text-[10px] text-blue-400 mt-0.5">
                 {fmt(rendimentoMensalEst)}/mês estimado
               </div>
@@ -904,7 +904,7 @@ export default function Caixinhas() {
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Guardado</div>
-              <div className="text-2xl font-black text-slate-800 mt-1">
+              <div className="text-2xl font-black text-slate-800 mt-1 privado">
                 {fmt(totalDepositadoGlobal + totalRendimentoReal > 0
                   ? totalDepositadoGlobal + totalRendimentoReal
                   : totalGuardado)}
@@ -916,7 +916,7 @@ export default function Caixinhas() {
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Rendimento Mensal</div>
-              <div className="text-2xl font-black text-emerald-600 mt-1">+{fmt(totalRendimentoMensal)}</div>
+              <div className="text-2xl font-black text-emerald-600 mt-1 privado">+{fmt(totalRendimentoMensal)}</div>
               <div className="text-[10px] text-slate-400 mt-0.5">estimativa próximo mês · CDI {taxaRef.toFixed(4)}%/dia</div>
             </div>
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={20} /></div>
@@ -924,7 +924,7 @@ export default function Caixinhas() {
           <div className="bg-emerald-600 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-emerald-200 font-bold uppercase tracking-wider">Já Rendeu</div>
-              <div className="text-2xl font-black text-white mt-1">+{fmt(totalRendimentoReal)}</div>
+              <div className="text-2xl font-black text-white mt-1 privado">+{fmt(totalRendimentoReal)}</div>
               <div className="text-[10px] text-emerald-200 mt-0.5">
                 {cdiStatus === 'ok' ? `CDI real · ${cdiMap.size} dias úteis` : 'taxa fixa de fallback'}
               </div>
@@ -934,7 +934,7 @@ export default function Caixinhas() {
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-5 rounded-2xl text-white shadow-sm flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Projeção Anual</div>
-              <div className="text-2xl font-black text-emerald-400 mt-1">+{fmt(totalRendimentoMensal * 12)}</div>
+              <div className="text-2xl font-black text-emerald-400 mt-1 privado">+{fmt(totalRendimentoMensal * 12)}</div>
               <div className="text-[10px] text-slate-400 mt-0.5">próximos 12 meses</div>
             </div>
             <div className="p-3 bg-white/10 text-emerald-400 rounded-xl"><TrendingUp size={20} /></div>

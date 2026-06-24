@@ -18,7 +18,8 @@ import {
   LayoutDashboard, Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Shield, Target, Calendar,
-  ArrowRight, BedDouble, Trees, BarChart2, Briefcase, Coins
+  ArrowRight, BedDouble, Trees, BarChart2, Briefcase, Coins,
+  Moon, Sun, Eye, EyeOff,
 } from "lucide-react";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -30,6 +31,7 @@ const CUBS_ESCRITURA_TOTAL = 29.6215;
 
 export default function App() {
   const hoje = new Date();
+  const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
   const [abaAtiva, setAbaAtiva]                     = useState("geral");
   const [subAbaInvestimento, setSubAbaInvestimento] = useState("acoes");
   const [subAbaPessoal, setSubAbaPessoal]           = useState("resumo");
@@ -37,9 +39,13 @@ export default function App() {
   const [menuInvestimentosAberto, setMenuInvestimentosAberto] = useState(false);
   const [menuPessoalAberto, setMenuPessoalAberto]             = useState(false);
   const [menuImovelAberto, setMenuImovelAberto]               = useState(false);
-  const [mesDash, setMesDash] = useState(String(hoje.getMonth() + 1).padStart(2, "0"));
-  const [anoDash, setAnoDash] = useState(String(hoje.getFullYear()));
+  const [mesDash, setMesDash] = useState(String(mesAnterior.getMonth() + 1).padStart(2, "0"));
+  const [anoDash, setAnoDash] = useState(String(mesAnterior.getFullYear()));
   const [loading, setLoading] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem('fh-dark-mode') === 'true';
+  });
+  const [privado, setPrivado] = useState(false);
 
   // Empresa
   const [notas,    setNotas]    = useState<any[]>([]);
@@ -69,6 +75,15 @@ export default function App() {
   const [cubsRestantesEscritura,setCubsRestantesEscritura]= useState(CUBS_ESCRITURA_TOTAL);
 
   useEffect(() => { buscarTodos(); }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark-theme', darkMode);
+    localStorage.setItem('fh-dark-mode', String(darkMode));
+  }, [darkMode]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('valores-ocultos', privado);
+  }, [privado]);
 
   useEffect(() => {
     function fecharMenus(e: MouseEvent) {
@@ -296,7 +311,7 @@ export default function App() {
           {/* Total */}
           <div className="px-6 pt-6 pb-5 border-b border-white/5">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
-            <p className="text-5xl font-black tabular-nums text-white tracking-tight">{fmt(patrimonioTotal)}</p>
+            <p className="text-5xl font-black tabular-nums text-white tracking-tight privado">{fmt(patrimonioTotal)}</p>
           </div>
           {/* Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
@@ -318,7 +333,7 @@ export default function App() {
                   {item.label}
                   {item.acao && <span className="opacity-0 group-hover:opacity-60 transition-opacity text-[8px]">↗</span>}
                 </span>
-                <span className={`text-sm font-black tabular-nums ${item.valor === 0 ? "text-slate-600" : "text-white"}`}>
+                <span className={`text-sm font-black tabular-nums ${item.valor === 0 ? "text-slate-600" : "text-white"} privado`}>
                   {fmt(item.valor)}
                 </span>
               </button>
@@ -345,7 +360,7 @@ export default function App() {
                 <div className="p-1.5 bg-emerald-50 rounded-lg"><ArrowUpRight size={14} className="text-emerald-600"/></div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entradas PF</p>
               </div>
-              <p className="text-2xl font-black text-emerald-600 tabular-nums">{fmt(totalEntradasMes)}</p>
+              <p className="text-2xl font-black text-emerald-600 tabular-nums privado">{fmt(totalEntradasMes)}</p>
               {entradasDoMes.length === 0
                 ? <p className="text-[11px] text-slate-300 mt-2 font-medium">Nenhum lançamento — cadastre em Pessoal → Entradas</p>
                 : <p className="text-[11px] text-slate-400 mt-2 font-semibold">{entradasDoMes.length} lançamento{entradasDoMes.length !== 1 ? "s" : ""}</p>}
@@ -355,7 +370,7 @@ export default function App() {
                 <div className="p-1.5 bg-rose-50 rounded-lg"><DollarSign size={14} className="text-rose-600"/></div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saídas PF</p>
               </div>
-              <p className="text-2xl font-black text-rose-600 tabular-nums">{fmt(totalSaidasMes)}</p>
+              <p className="text-2xl font-black text-rose-600 tabular-nums privado">{fmt(totalSaidasMes)}</p>
               {saidasDoMes.length === 0
                 ? <p className="text-[11px] text-slate-300 mt-2 font-medium">Nenhum gasto registrado</p>
                 : <p className="text-[11px] text-slate-400 mt-2 font-semibold">{saidasDoMes.length} gasto{saidasDoMes.length !== 1 ? "s" : ""}</p>}
@@ -365,7 +380,7 @@ export default function App() {
                 <div className="p-1.5 bg-white/20 rounded-lg"><Target size={14}/></div>
                 <p className="text-[10px] font-black text-white/70 uppercase tracking-widest">Saldo do Mês</p>
               </div>
-              <p className="text-2xl font-black tabular-nums">{fmt(saldoMes)}</p>
+              <p className="text-2xl font-black tabular-nums privado">{fmt(saldoMes)}</p>
               <p className="text-[11px] text-white/70 mt-2 font-semibold">
                 {saldoMes >= 0 ? "✓ Mês positivo" : "⚠ Gastos acima das entradas"}
                 {totalEntradasMes === 0 && " · cadastre entradas PF"}
@@ -395,14 +410,14 @@ export default function App() {
               ].map((row, i) => (
                 <div key={i} className={`flex items-center justify-between ${i === 3 ? "pt-2 border-t border-slate-100" : ""}`}>
                   <span className="text-xs text-slate-500 font-semibold">{row.label}</span>
-                  <span className={`text-xs font-black tabular-nums ${row.color}`}>{fmt(row.valor)}</span>
+                  <span className={`text-xs font-black tabular-nums ${row.color} privado`}>{fmt(row.valor)}</span>
                 </div>
               ))}
             </div>
             <div className="mt-4 pt-3 border-t border-slate-50">
               <div className="flex justify-between text-[10px] text-slate-400 font-semibold">
                 <span>Faturamento {anoDash}</span>
-                <span className="font-black text-slate-700 tabular-nums">{fmt(faturamentoAno)}</span>
+                <span className="font-black text-slate-700 tabular-nums privado">{fmt(faturamentoAno)}</span>
               </div>
             </div>
           </div>
@@ -416,7 +431,7 @@ export default function App() {
               </div>
               <button onClick={() => { setSubAbaInvestimento("caixinhas"); setAbaAtiva("investimentos"); }} className="text-[10px] font-bold text-emerald-500 hover:text-emerald-700 flex items-center gap-1">Ver <ArrowRight size={10}/></button>
             </div>
-            <p className="text-2xl font-black text-emerald-600 tabular-nums mb-3">{fmt(totalCaixinhas)}</p>
+            <p className="text-2xl font-black text-emerald-600 tabular-nums mb-3 privado">{fmt(totalCaixinhas)}</p>
             <div className="space-y-2">
               {caixinhas.slice(0, 4).map((c: any, i: number) => {
                 const pct = c.meta ? Math.min(100, (c.valor_atual / c.meta) * 100) : 0;
@@ -451,8 +466,8 @@ export default function App() {
                 <div className="h-full bg-cyan-500 rounded-full transition-all" style={{ width: `${progressoImovel.toFixed(1)}%` }}/>
               </div>
               <div className="flex justify-between text-[10px] font-semibold">
-                <span className="text-cyan-700">{fmt(imovelPago)} pago</span>
-                <span className="text-cyan-500">{progressoImovel.toFixed(1)}% · valor atual {fmt(imovelAtualizado)}</span>
+                <span className="text-cyan-700 privado">{fmt(imovelPago)} pago</span>
+                <span className="text-cyan-500">{progressoImovel.toFixed(1)}% · valor atual <span className="privado">{fmt(imovelAtualizado)}</span></span>
               </div>
             </div>
             {cubsRestantesEscritura < CUBS_ESCRITURA_TOTAL && (
@@ -462,7 +477,7 @@ export default function App() {
                   <div className="h-full bg-purple-500 rounded-full" style={{ width: `${Math.min(100,((CUBS_ESCRITURA_TOTAL-cubsRestantesEscritura)/CUBS_ESCRITURA_TOTAL)*100).toFixed(1)}%` }}/>
                 </div>
                 <div className="flex justify-between text-[10px] font-semibold">
-                  <span className="text-purple-600">{fmt(escrituraPaga)} pago</span>
+                  <span className="text-purple-600 privado">{fmt(escrituraPaga)} pago</span>
                   {cubsRestantesEscritura <= 0
                     ? <span className="text-emerald-600 font-black">✓ Quitada!</span>
                     : <span className="text-purple-400">{cubsRestantesEscritura.toFixed(4)} CUBs restantes</span>}
@@ -474,7 +489,7 @@ export default function App() {
                 <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider mb-1 flex items-center gap-1">
                   <FileText size={10}/> Próxima Parcela
                 </p>
-                <p className="text-base font-black text-indigo-800 tabular-nums">{fmt(proximaParcelaImovel.valor)}</p>
+                <p className="text-base font-black text-indigo-800 tabular-nums privado">{fmt(proximaParcelaImovel.valor)}</p>
                 <p className={`text-[10px] font-bold mt-0.5 ${proximaParcelaImovel.dias <= 7 ? "text-rose-600" : "text-indigo-500"}`}>
                   {proximaParcelaImovel.dias <= 0 ? "Vencida!" : `em ${proximaParcelaImovel.dias} dia${proximaParcelaImovel.dias !== 1 ? "s" : ""}`}
                 </p>
@@ -505,7 +520,7 @@ export default function App() {
                             <span className="text-[10px] text-slate-300 font-bold w-3">{i+1}</span>
                             <span className="text-xs font-semibold text-slate-700">{cat}</span>
                           </div>
-                          <span className="text-xs font-black text-slate-800 tabular-nums">{fmt(val)}</span>
+                          <span className="text-xs font-black text-slate-800 tabular-nums privado">{fmt(val)}</span>
                         </div>
                         <div className="h-1.5 bg-slate-100 rounded-full">
                           <div className="h-full bg-rose-400 rounded-full" style={{ width: `${(val/maxCat)*100}%` }}/>
@@ -557,12 +572,25 @@ export default function App() {
   return (
     <PasswordGate>
       <div className="min-h-screen bg-slate-50 font-sans antialiased text-slate-600">
-        <header className="bg-white border-b border-slate-200/80 sticky top-0 z-40 shadow-sm">
+        <header className="bg-white border-b border-slate-200/80 sticky top-0 z-40 shadow-sm dark-theme" style={darkMode ? { backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' } : {}}>
           <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
             <span className="text-lg font-black tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               FinançasHub
             </span>
-            <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/40">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setDarkMode(d => !d)}
+                className="p-2 rounded-xl transition-all"
+                style={{ color: 'var(--text-muted)' }}
+                title={darkMode ? 'Modo claro' : 'Modo escuro'}>
+                {darkMode ? <Sun size={16}/> : <Moon size={16}/>}
+              </button>
+              <button onClick={() => setPrivado(p => !p)}
+                className={`p-2 rounded-xl transition-all ${privado ? 'text-amber-500' : ''}`}
+                style={privado ? {} : { color: 'var(--text-muted)' }}
+                title={privado ? 'Mostrar valores' : 'Ocultar valores'}>
+                {privado ? <EyeOff size={16}/> : <Eye size={16}/>}
+              </button>
+              <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/40 dark-theme" style={darkMode ? { backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' } : {}}>
               {navItems.map(item => (
                 <button key={item.id} onClick={() => setAbaAtiva(item.id)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${abaAtiva === item.id ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
@@ -624,6 +652,7 @@ export default function App() {
                 )}
               </div>
             </nav>
+            </div>
           </div>
 
           {abaAtiva === "imoveis" && (

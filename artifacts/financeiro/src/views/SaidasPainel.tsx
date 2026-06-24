@@ -87,7 +87,7 @@ function MetricCard({
         </div>
         <Icon size={14} className="text-slate-300" />
       </div>
-      <p className="text-2xl font-black text-slate-800 tracking-tight leading-none">
+      <p className="text-2xl font-black text-slate-800 tracking-tight leading-none privado">
         R$ {value}
       </p>
       {delta && (
@@ -115,7 +115,7 @@ function RankItem({
       <div className="w-16 h-1 rounded-full bg-slate-100 shrink-0">
         <div className="h-1 rounded-full" style={{ width: `${pct}%`, background: cfg.dot }} />
       </div>
-      <span className="text-xs font-bold text-slate-800 w-20 text-right shrink-0">
+      <span className="text-xs font-bold text-slate-800 w-20 text-right shrink-0 privado">
         R$ {fmtBRL(val)}
       </span>
     </div>
@@ -376,7 +376,7 @@ export default function SaidasPainel() {
                         <button onClick={() => handleDeletarCartao(cartao.id)} className="p-1.5 bg-black/20 hover:bg-black/30 rounded-lg text-white transition-colors"><Trash2 size={11} /></button>
                       </div>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-3">{cartao.nome_cartao}</p>
-                      <p className="text-2xl font-black text-white">R$ {fmtBRL(fatura)}</p>
+                      <p className="text-2xl font-black text-white privado">R$ {fmtBRL(fatura)}</p>
                       <p className="text-[10px] text-white/50 font-medium mt-0.5">Fatura no período</p>
                     </div>
                     {/* Card footer */}
@@ -394,7 +394,7 @@ export default function SaidasPainel() {
                       </div>
                       <div className="flex justify-between text-[11px] font-semibold text-slate-500 pt-1">
                         <span>Vence dia {cartao.dia_vencimento}</span>
-                        <span className="text-slate-700">Limite R$ {Number(cartao.limite_total).toLocaleString('pt-BR')}</span>
+                        <span className="text-slate-700 privado">Limite R$ {Number(cartao.limite_total).toLocaleString('pt-BR')}</span>
                       </div>
                     </div>
                   </div>
@@ -462,7 +462,7 @@ export default function SaidasPainel() {
                               : <span className="text-emerald-600">PIX / Dinheiro</span>
                             }
                           </td>
-                          <td className="py-3 text-right text-xs font-black text-slate-800">
+                          <td className="py-3 text-right text-xs font-black text-slate-800 privado">
                             R$ {fmtBRL(Number(gasto.valor))}
                           </td>
                           <td className="py-3 text-right">

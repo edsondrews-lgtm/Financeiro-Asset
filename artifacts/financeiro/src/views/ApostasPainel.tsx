@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import {
   TrendingUp, TrendingDown, Plus, X, Edit2, Trash2,
   AlertTriangle, ChevronLeft, ChevronRight, Target,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, Eye, EyeOff,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -88,6 +88,19 @@ export default function ApostasPainel() {
   const [casaFiltro,  setCasaFiltro]  = useState('TODAS');
   const [toast,       setToast]       = useState<Toast | null>(null);
   const [errosForm,   setErrosForm]   = useState<Record<string, string>>({});
+
+  // privacidade é controlada globalmente via App.tsx
+  const [privado, setPrivado] = useState(false);
+  useEffect(() => {
+    const obs = new MutationObserver(() => {
+      setPrivado(document.documentElement.classList.contains('valores-ocultos'));
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    setPrivado(document.documentElement.classList.contains('valores-ocultos'));
+    return () => obs.disconnect();
+  }, []);
+
+  const privCls = privado ? 'privado' : '';
 
   // toast automático
   const showToast = useCallback((tipo: Toast['tipo'], msg: string) => {
@@ -202,7 +215,7 @@ export default function ApostasPainel() {
     return { casa, dep, saq, res, roi: r };
   });
 
-  // evolução mensal — últimos 12 meses (sem Math.round para manter precisão)
+  // evolução mensal
   const evolucaoMensal = (() => {
     const meses: { mes: string; depositos: number; saques: number; resultado: number }[] = [];
     for (let i = 11; i >= 0; i--) {
@@ -221,7 +234,7 @@ export default function ApostasPainel() {
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50/60">
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-5">
 
         {/* Toast */}
@@ -237,33 +250,35 @@ export default function ApostasPainel() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-slate-800 rounded-2xl text-white shadow-lg">
+            <div className="p-3 rounded-2xl text-white shadow-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
               <Target size={20}/>
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Apostas</h1>
-              <p className="text-slate-400 text-[10px] sm:text-xs font-semibold mt-0.5">Granawin · BetandYou · controle de depósitos e saques</p>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Apostas</h1>
+              <p className="text-[10px] sm:text-xs font-semibold mt-0.5" style={{ color: 'var(--text-muted)' }}>Granawin · BetandYou · BetLabel · controle de depósitos e saques</p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start">
-            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+            <div className="flex items-center rounded-xl p-1 shadow-sm" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}>
               {(['dashboard','lancamentos'] as SubAba[]).map(id => (
                 <button key={id} onClick={() => setSubAba(id)}
-                  className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${subAba === id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${subAba === id ? 'text-white shadow-sm' : 'hover:opacity-80'}`}
+                  style={subAba === id ? { backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' } : { color: 'var(--text-muted)' }}>
                   {id === 'dashboard' ? 'Dashboard' : 'Lanç.'}
                 </button>
               ))}
             </div>
             <button onClick={() => { setEditId(null); setForm({ ...formInicial }); setErrosForm({}); setModal(true); }}
-              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 sm:px-4 py-2 rounded-xl transition-colors shadow-sm">
+              className="flex items-center gap-1.5 text-white text-xs font-bold px-3 sm:px-4 py-2 rounded-xl transition-colors shadow-sm"
+              style={{ backgroundColor: 'var(--bg-elevated)' }}>
               <Plus size={13}/> <span className="hidden sm:inline">Novo lançamento</span><span className="sm:hidden">Novo</span>
             </button>
           </div>
         </div>
 
         {loading && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold">
-            <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"/>
+          <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+            <div className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--text-muted)', borderTopColor: 'transparent' }}/>
             Carregando...
           </div>
         )}
@@ -277,11 +292,10 @@ export default function ApostasPainel() {
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mb-2">Resultado geral · todas as casas</p>
-                  <p className="text-3xl sm:text-4xl font-black tracking-tight">
+                  <p className={`text-3xl sm:text-4xl font-black tracking-tight ${privCls}`}>
                     {resultado >= 0 ? '+' : '−'} R$ {fmtBRL(Math.abs(resultado))}
                   </p>
                 </div>
-                {/* Tendência mês a mês */}
                 {tendencia !== null && tendenciaMelhorando !== null && (
                   <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold self-start ${
                     tendenciaMelhorando ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70'
@@ -294,11 +308,11 @@ export default function ApostasPainel() {
               <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-5">
                 <div>
                   <p className="text-[9px] sm:text-[10px] opacity-60 uppercase tracking-widest mb-1">Depositado</p>
-                  <p className="text-base sm:text-lg font-black">R$ {fmtBRL(totalDepositos)}</p>
+                  <p className={`text-base sm:text-lg font-black ${privCls}`}>R$ {fmtBRL(totalDepositos)}</p>
                 </div>
                 <div>
                   <p className="text-[9px] sm:text-[10px] opacity-60 uppercase tracking-widest mb-1">Sacado</p>
-                  <p className="text-base sm:text-lg font-black">R$ {fmtBRL(totalSaques)}</p>
+                  <p className={`text-base sm:text-lg font-black ${privCls}`}>R$ {fmtBRL(totalSaques)}</p>
                 </div>
                 <div>
                   <p className="text-[9px] sm:text-[10px] opacity-60 uppercase tracking-widest mb-1">ROI geral</p>
@@ -314,7 +328,7 @@ export default function ApostasPainel() {
                 <div>
                   <p className="text-sm font-black text-amber-900">Atenção ao saldo</p>
                   <p className="text-xs text-amber-700 font-medium mt-1">
-                    Prejuízo acumulado de <strong>R$ {fmtBRL(Math.abs(resultado))}</strong>.
+                    Prejuízo acumulado de <strong className={privCls}>R$ {fmtBRL(Math.abs(resultado))}</strong>.
                     {temHistorico && tendenciaMelhorando === false && ' O resultado piorou frente ao mês anterior.'}
                   </p>
                 </div>
@@ -327,24 +341,24 @@ export default function ApostasPainel() {
                 const cfg = CASA_CFG[s.casa];
                 const positivo = s.res >= 0;
                 return (
-                  <div key={s.casa} className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                  <div key={s.casa} className="rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
                     <div className={`${cfg.bg} px-5 py-4`}>
                       <p className={`text-[10px] font-black uppercase tracking-widest ${cfg.text} opacity-70 mb-1`}>{s.casa}</p>
-                      <p className={`text-2xl font-black ${cfg.text}`}>
+                      <p className={`text-2xl font-black ${cfg.text} ${privCls}`}>
                         {positivo ? '+' : '−'} R$ {fmtBRL(Math.abs(s.res))}
                       </p>
                       <p className={`text-[11px] ${cfg.text} opacity-60 mt-0.5`}>
                         {positivo ? '▲ Lucro' : '▼ Prejuízo'} · ROI {s.roi >= 0 ? '+' : ''}{s.roi.toFixed(1)}%
                       </p>
                     </div>
-                    <div className="grid grid-cols-2 divide-x divide-slate-100">
-                      <div className="px-5 py-3">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Depositado</p>
-                        <p className="text-base font-black text-rose-600">R$ {fmtBRL(s.dep)}</p>
+                    <div className="grid grid-cols-2" style={{ borderTop: '1px solid var(--border-light)' }}>
+                      <div className="px-5 py-3" style={{ borderRight: '1px solid var(--border-light)' }}>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Depositado</p>
+                        <p className={`text-base font-black text-rose-600 ${privCls}`}>R$ {fmtBRL(s.dep)}</p>
                       </div>
                       <div className="px-5 py-3">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Sacado</p>
-                        <p className="text-base font-black text-emerald-600">R$ {fmtBRL(s.saq)}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Sacado</p>
+                        <p className={`text-base font-black text-emerald-600 ${privCls}`}>R$ {fmtBRL(s.saq)}</p>
                       </div>
                     </div>
                   </div>
@@ -352,58 +366,59 @@ export default function ApostasPainel() {
               })}
             </div>
 
-            {/* Gráfico evolução mensal — cores dinâmicas */}
-            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Resultado mensal — últimos 12 meses</p>
+            {/* Gráfico evolução mensal */}
+            <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Resultado mensal — últimos 12 meses</p>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={evolucaoMensal} margin={{ top: 4, right: 4, left: -15, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                  <XAxis dataKey="mes" tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false}/>
-                  <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false}/>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)"/>
+                  <XAxis dataKey="mes" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
+                  <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
                   <Tooltip
                     formatter={(v: number) => [`R$ ${fmtBRL(v)}`, 'Resultado']}
-                    contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: 'none' }}
+                    contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid var(--border-color)', boxShadow: 'none', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                   />
-                  <ReferenceLine y={0} stroke="#e2e8f0"/>
+                  <ReferenceLine y={0} stroke="var(--border-color)"/>
                   <Bar dataKey="resultado" radius={[3,3,0,0]}>
                     {evolucaoMensal.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.resultado >= 0 ? '#10b981' : '#f43f5e'}/>
+                      <Cell key={idx} fill={entry.resultado >= 0 ? 'var(--chart-green)' : 'var(--chart-red)'}/>
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
               <div className="flex gap-4 mt-2">
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-500 font-semibold">
-                  <span className="w-3 h-3 rounded bg-emerald-500 inline-block"/>Lucro
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-green)' }}/>Lucro
                 </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-500 font-semibold">
-                  <span className="w-3 h-3 rounded bg-rose-400 inline-block"/>Prejuízo
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-red)' }}/>Prejuízo
                 </span>
               </div>
             </div>
 
             {/* Gráfico depósitos vs saques */}
-            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Depósitos vs saques — últimos 12 meses</p>
+            <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Depósitos vs saques — últimos 12 meses</p>
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={evolucaoMensal} margin={{ top: 4, right: 4, left: -15, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                  <XAxis dataKey="mes" tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false}/>
-                  <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false}/>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)"/>
+                  <XAxis dataKey="mes" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
+                  <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
                   <Tooltip
                     formatter={(v: number, n: string) => [`R$ ${fmtBRL(v)}`, n === 'depositos' ? 'Depósitos' : 'Saques']}
-                    contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: 'none' }}
+                    contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid var(--border-color)', boxShadow: 'none', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                   />
-                  <Bar dataKey="depositos" fill="#f43f5e" radius={[3,3,0,0]} name="depositos"/>
-                  <Bar dataKey="saques"    fill="#10b981" radius={[3,3,0,0]} name="saques"/>
+                  <Bar dataKey="depositos" fill="var(--chart-red)" radius={[3,3,0,0]} name="depositos"/>
+                  <Bar dataKey="saques"    fill="var(--chart-green)" radius={[3,3,0,0]} name="saques"/>
                 </BarChart>
               </ResponsiveContainer>
               <div className="flex gap-4 mt-2">
-                {[['#f43f5e','Depósitos'],['#10b981','Saques']].map(([c,l]) => (
-                  <span key={l} className="flex items-center gap-1.5 text-[11px] text-slate-500 font-semibold">
-                    <span className="w-3 h-3 rounded inline-block" style={{ background: c }}/>{l}
-                  </span>
-                ))}
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-red)' }}/>Depósitos
+                </span>
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-green)' }}/>Saques
+                </span>
               </div>
             </div>
 
@@ -419,55 +434,59 @@ export default function ApostasPainel() {
               <div className="flex items-center gap-2 flex-wrap">
                 {['TODAS', ...CASAS].map(c => (
                   <button key={c} onClick={() => setCasaFiltro(c)}
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${
-                      casaFiltro === c ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
-                    }`}>
+                    className="px-3 py-1 rounded-full text-[10px] font-bold border transition-all"
+                    style={casaFiltro === c
+                      ? { backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }
+                      : { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', borderColor: 'var(--border-color)' }
+                    }>
                     {c === 'TODAS' ? 'Todas as casas' : c}
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1.5">
+              <div className="flex items-center gap-1 rounded-xl px-2 py-1.5" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                 <button onClick={() => setMesFiltro('TODOS')}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
-                    mesFiltro === 'TODOS' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-                  }`}>
+                  className="px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all"
+                  style={mesFiltro === 'TODOS'
+                    ? { backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }
+                    : { color: 'var(--text-muted)' }
+                  }>
                   Todos
                 </button>
-                <div className="w-px h-4 bg-slate-200 mx-1"/>
-                <button onClick={() => setMesFiltro(m => navegarMes(m, -1))} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+                <div className="w-px h-4 mx-1" style={{ backgroundColor: 'var(--border-color)' }}/>
+                <button onClick={() => setMesFiltro(m => navegarMes(m, -1))} className="p-1 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}>
                   <ChevronLeft size={14}/>
                 </button>
-                <span className="text-xs font-bold text-slate-700 px-2 min-w-[70px] text-center">{labelMesYM(mesFiltro)}</span>
-                <button onClick={() => setMesFiltro(m => navegarMes(m, 1))} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+                <span className="text-xs font-bold px-2 min-w-[70px] text-center" style={{ color: 'var(--text-primary)' }}>{labelMesYM(mesFiltro)}</span>
+                <button onClick={() => setMesFiltro(m => navegarMes(m, 1))} className="p-1 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}>
                   <ChevronRight size={14}/>
                 </button>
               </div>
             </div>
 
-            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+            <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
               <div className="flex justify-between items-center mb-4">
                 <div>
-                  <p className="text-sm font-black text-slate-800">Lançamentos</p>
-                  <p className="text-xs text-slate-400 font-semibold mt-0.5">{listaFiltrada.length} registro{listaFiltrada.length !== 1 ? 's' : ''}</p>
+                  <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>Lançamentos</p>
+                  <p className="text-xs font-semibold mt-0.5" style={{ color: 'var(--text-muted)' }}>{listaFiltrada.length} registro{listaFiltrada.length !== 1 ? 's' : ''}</p>
                 </div>
               </div>
 
               {listaFiltrada.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-10">Nenhum lançamento no período</p>
+                <p className="text-xs text-center py-10" style={{ color: 'var(--text-muted)' }}>Nenhum lançamento no período</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-100">
+                      <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
                         {['Data','Casa','Tipo','Valor','Obs.',''].map((h, i) => (
-                          <th key={i} className="pb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 last:text-right">{h}</th>
+                          <th key={i} className="pb-2.5 text-[10px] font-bold uppercase tracking-wider last:text-right" style={{ color: 'var(--text-muted)' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody>
                       {listaFiltrada.map(l => (
-                        <tr key={l.id} className="hover:bg-slate-50/60 transition-colors group/row">
-                          <td className="py-3 text-[11px] text-slate-400 font-medium pr-3">{fmtData(l.data)}</td>
+                        <tr key={l.id} className="transition-colors group/row" style={{ borderBottom: '1px solid var(--border-light)' }}>
+                          <td className="py-3 text-[11px] font-medium pr-3" style={{ color: 'var(--text-muted)' }}>{fmtData(l.data)}</td>
                           <td className="py-3 pr-3">
                             <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold text-white ${CASA_CFG[l.casa]?.bg ?? 'bg-slate-500'}`}>
                               {l.casa}
@@ -479,16 +498,16 @@ export default function ApostasPainel() {
                               {l.tipo === 'DEPOSITO' ? 'Depósito' : 'Saque'}
                             </span>
                           </td>
-                          <td className={`py-3 text-xs font-black pr-3 ${l.tipo === 'DEPOSITO' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          <td className={`py-3 text-xs font-black pr-3 ${l.tipo === 'DEPOSITO' ? 'text-rose-600' : 'text-emerald-600'} ${privCls}`}>
                             {l.tipo === 'DEPOSITO' ? '− ' : '+ '}R$ {fmtBRL(Number(l.valor))}
                           </td>
-                          <td className="py-3 text-[11px] text-slate-400 pr-3 max-w-[160px] truncate">
+                          <td className="py-3 text-[11px] pr-3 max-w-[160px] truncate" style={{ color: 'var(--text-muted)' }}>
                             {l.observacao ?? '—'}
                           </td>
                           <td className="py-3 text-right">
                             <div className="flex justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                              <button onClick={() => editar(l)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors"><Edit2 size={12}/></button>
-                              <button onClick={() => deletar(l.id)} className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={12}/></button>
+                              <button onClick={() => editar(l)} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}><Edit2 size={12}/></button>
+                              <button onClick={() => deletar(l.id)} className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-400 hover:text-rose-600 transition-colors"><Trash2 size={12}/></button>
                             </div>
                           </td>
                         </tr>
@@ -504,12 +523,12 @@ export default function ApostasPainel() {
 
       {/* ── Modal ──────────────────────────────────────────────── */}
       {modal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl relative space-y-5">
-            <button onClick={fecharModal} className="absolute right-4 top-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={15}/></button>
+        <div className="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="rounded-2xl p-6 w-full max-w-md shadow-2xl relative space-y-5" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+            <button onClick={fecharModal} className="absolute right-4 top-4 p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}><X size={15}/></button>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">{editId ? 'Editar lançamento' : 'Novo lançamento'}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Registre um depósito ou saque</p>
+              <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{editId ? 'Editar lançamento' : 'Novo lançamento'}</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Registre um depósito ou saque</p>
             </div>
             <form onSubmit={salvar} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -530,8 +549,9 @@ export default function ApostasPainel() {
                       className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
                         form.tipo === t
                           ? t === 'DEPOSITO' ? 'bg-rose-600 text-white border-rose-600' : 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-400'
-                      }`}>
+                          : 'text-slate-500 border-slate-200 hover:border-slate-400'
+                      }`}
+                      style={form.tipo !== t ? { backgroundColor: 'var(--bg-tertiary)' } : {}}>
                       {t === 'DEPOSITO' ? '↓ Depósito' : '↑ Saque'}
                     </button>
                   ))}
@@ -545,7 +565,8 @@ export default function ApostasPainel() {
                 <input type="text" className={inputCls} placeholder="Ex: bônus de boas-vindas..." value={form.observacao} onChange={e => setForm({ ...form, observacao: e.target.value })}/>
               </Field>
               <button type="submit" disabled={saving}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                className="w-full text-white font-bold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style={{ backgroundColor: 'var(--bg-elevated)' }}>
                 {saving && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>}
                 {editId ? 'Salvar alterações' : 'Registrar'}
               </button>

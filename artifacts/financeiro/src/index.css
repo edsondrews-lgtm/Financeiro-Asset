@@ -1,5 +1,67 @@
 @import "tailwindcss";
 
+/* ── CSS Variables ────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light dark;
+
+  /* Light mode (default) */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-elevated: #ffffff;
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border-color: #e2e8f0;
+  --border-light: #f1f5f9;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+
+  /* Status colors */
+  --color-success: #059669;
+  --color-success-bg: #ecfdf5;
+  --color-danger: #e11d48;
+  --color-danger-bg: #fff1f2;
+  --color-warning: #d97706;
+  --color-warning-bg: #fffbeb;
+
+  /* Chart colors */
+  --chart-green: #10b981;
+  --chart-red: #f43f5e;
+  --chart-blue: #3b82f6;
+}
+
+/* ── Dark Theme ───────────────────────────────────────────────────────────── */
+.dark-theme {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #1e293b;
+  --bg-elevated: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --border-light: #1e293b;
+  --accent: #60a5fa;
+  --accent-hover: #93bbfd;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+
+  --color-success: #34d399;
+  --color-success-bg: #064e3b;
+  --color-danger: #fb7185;
+  --color-danger-bg: #4c0519;
+  --color-warning: #fbbf24;
+  --color-warning-bg: #451a03;
+
+  --chart-green: #34d399;
+  --chart-red: #fb7185;
+  --chart-blue: #60a5fa;
+}
+
+/* ── Base Styles ──────────────────────────────────────────────────────────── */
 @layer base {
   * {
     box-sizing: border-box;
@@ -11,11 +73,157 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #f8fafc;
-    color: #475569;
+    background-color: var(--bg-primary);
+    color: var(--text-secondary);
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
 
+/* ── Dark Theme Overrides ─────────────────────────────────────────────────── */
+.dark-theme body,
+.dark-theme {
+  color: var(--text-secondary);
+}
+
+.dark-theme .bg-white {
+  background-color: var(--bg-secondary) !important;
+}
+
+.dark-theme .bg-slate-50 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.dark-theme .bg-slate-100 {
+  background-color: var(--bg-elevated) !important;
+}
+
+.dark-theme .bg-slate-50\/60 {
+  background-color: var(--bg-primary) !important;
+}
+
+.dark-theme .text-slate-900,
+.dark-theme .text-slate-800 {
+  color: var(--text-primary) !important;
+}
+
+.dark-theme .text-slate-700,
+.dark-theme .text-slate-600 {
+  color: var(--text-secondary) !important;
+}
+
+.dark-theme .text-slate-500,
+.dark-theme .text-slate-400 {
+  color: var(--text-muted) !important;
+}
+
+.dark-theme .border-slate-200,
+.dark-theme .border-slate-100 {
+  border-color: var(--border-color) !important;
+}
+
+.dark-theme .border-b\/slate-200\/80 {
+  border-color: var(--border-color) !important;
+}
+
+.dark-theme .hover\:bg-slate-50:hover {
+  background-color: var(--bg-elevated) !important;
+}
+
+.dark-theme .hover\:bg-slate-100:hover {
+  background-color: var(--bg-elevated) !important;
+}
+
+.dark-theme header {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.dark-theme .shadow-sm {
+  box-shadow: 0 1px 2px 0 var(--shadow-color) !important;
+}
+
+.dark-theme .shadow-lg {
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* Cards */
+.dark-theme .rounded-2xl {
+  border-color: var(--border-color) !important;
+}
+
+.dark-theme .bg-gradient-to-br {
+  color: white !important;
+}
+
+/* Forms */
+.dark-theme input,
+.dark-theme select {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark-theme input::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Tables */
+.dark-theme tbody tr {
+  border-color: var(--border-color) !important;
+}
+
+.dark-theme tbody tr:hover {
+  background-color: var(--bg-elevated) !important;
+}
+
+/* Modals */
+.dark-theme .fixed .bg-white {
+  background-color: var(--bg-secondary) !important;
+}
+
+/* Dropdowns */
+.dark-theme .absolute .bg-white {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* ── Privacy Toggle (Global) ──────────────────────────────────────────────── */
+.valores-ocultos .privado {
+  filter: blur(5px);
+  opacity: 0.3;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.valores-ocultos .privado:hover {
+  filter: blur(3px);
+  opacity: 0.5;
+}
+
+/* Atalho: aplica blur em qualquer elemento com classe .valor ou .valor-oculto */
+.valores-ocultos .valor,
+.valores-ocultos .valor-oculto {
+  filter: blur(5px);
+  opacity: 0.3;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+  user-select: none;
+}
+
+/* Smooth transition for all theme changes */
+* {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+
+/* Override transition for elements that need it faster/slower */
+.privado,
+.privado * {
+  transition-duration: 0.3s;
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }

@@ -140,10 +140,10 @@ function NovoConsorcioForm({ onSalvo }: { onSalvo: () => void }) {
       </div>
 
       <div className="p-4 bg-violet-50 rounded-xl border border-violet-100 text-xs text-violet-800 grid grid-cols-4 gap-3">
-        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Fundo Comum</div><div className="font-black">{fmt(fc)}</div></div>
-        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Taxa Adm.</div><div className="font-black">{fmt(adm)}</div></div>
-        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Fundo Reserva</div><div className="font-black">{fmt(res)}</div></div>
-        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Parcela Total</div><div className="font-black text-violet-700">{fmt(total)}</div></div>
+        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Fundo Comum</div><div className="font-black privado">{fmt(fc)}</div></div>
+        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Taxa Adm.</div><div className="font-black privado">{fmt(adm)}</div></div>
+        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Fundo Reserva</div><div className="font-black privado">{fmt(res)}</div></div>
+        <div><div className="text-violet-400 font-bold uppercase mb-0.5">Parcela Total</div><div className="font-black text-violet-700 privado">{fmt(total)}</div></div>
       </div>
 
       <div className="flex justify-end">
@@ -428,8 +428,8 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
             <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Saldo Devedor</span>
             <div className="p-2 bg-rose-50 text-rose-500 rounded-lg"><TrendingUp size={15} /></div>
           </div>
-          <div className="text-2xl font-black text-slate-800">{fmt(saldoDevedor)}</div>
-          <div className="text-[10px] text-slate-400">FC pago: {fmt(fundoComumPago)}</div>
+            <p className="text-2xl font-black text-slate-800 privado">{fmt(saldoDevedor)}</p>
+            <div className="text-[10px] text-slate-400">FC pago: <span className="privado">{fmt(fundoComumPago)}</span></div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
@@ -437,7 +437,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
             <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Custo Total Efetivo</span>
             <div className="p-2 bg-amber-50 text-amber-500 rounded-lg"><DollarSign size={15} /></div>
           </div>
-          <div className="text-2xl font-black text-slate-800">{fmt(custoEfetivo)}</div>
+          <div className="text-2xl font-black text-slate-800 privado">{fmt(custoEfetivo)}</div>
           <div className="text-[10px] text-slate-400">Pago + pendente</div>
         </div>
 
@@ -540,19 +540,19 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Lance aplicado</span>
-                        <span className="font-bold text-violet-700">{fmt(simulacao.lance)}</span>
+                        <span className="font-bold text-violet-700 privado">{fmt(simulacao.lance)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">Redução por parcela</span>
-                        <span className="font-bold text-rose-500">-{fmt(simulacao.reducaoPorParcela ?? 0)}</span>
+                        <span className="font-bold text-rose-500 privado">-{fmt(simulacao.reducaoPorParcela ?? 0)}</span>
                       </div>
                       <div className="border-t border-violet-200 pt-2 flex justify-between">
                         <span className="text-slate-500">Parcela atual (aprox.)</span>
-                        <span className="font-bold text-slate-700">{fmt(pendentes[0]?.valor_total ?? 0)}</span>
+                        <span className="font-bold text-slate-700 privado">{fmt(pendentes[0]?.valor_total ?? 0)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500 font-bold">Nova parcela</span>
-                        <span className="font-black text-emerald-600">{fmt(simulacao.novaParcelaMedio ?? 0)}</span>
+                        <span className="font-black text-emerald-600 privado">{fmt(simulacao.novaParcelaMedio ?? 0)}</span>
                       </div>
                       <div className="text-[10px] text-violet-500">{pendentes.length} parcelas pendentes afetadas</div>
                     </div>
@@ -560,7 +560,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Lance aplicado</span>
-                        <span className="font-bold text-violet-700">{fmt(simulacao.lance)}</span>
+                        <span className="font-bold text-violet-700 privado">{fmt(simulacao.lance)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">Parcelas a cancelar</span>
@@ -649,9 +649,9 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
                 {parcelasPagina.map(p => (
                   <tr key={p.id} className={`transition-colors hover:bg-slate-50/60 ${p.status === 'cancelada' ? 'opacity-40' : ''}`}>
                     <td className="px-5 py-3 font-bold text-slate-600 text-xs">#{p.numero_parcela}</td>
-                    <td className="px-4 py-3 text-right text-slate-500 text-xs">{fmt(p.valor_fundo_comum)}</td>
-                    <td className="px-4 py-3 text-right text-slate-500 text-xs">{fmt(p.valor_taxa_adm)}</td>
-                    <td className="px-4 py-3 text-right text-slate-500 text-xs">{fmt(p.valor_fundo_reserva)}</td>
+                    <td className="px-4 py-3 text-right text-slate-500 text-xs privado">{fmt(p.valor_fundo_comum)}</td>
+                    <td className="px-4 py-3 text-right text-slate-500 text-xs privado">{fmt(p.valor_taxa_adm)}</td>
+                    <td className="px-4 py-3 text-right text-slate-500 text-xs privado">{fmt(p.valor_fundo_reserva)}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-800 text-xs">
                       {editandoId === p.id ? (
                         <div className="flex items-center gap-1 justify-end">
@@ -750,8 +750,8 @@ export default function Consorcios() {
                 <span className="text-[10px] text-violet-600 font-bold bg-violet-50 px-2 py-0.5 rounded-full">{c.prazo}x</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div><div className="text-slate-400">Valor do Bem</div><div className="font-bold text-slate-700">{fmt(c.valor_bem)}</div></div>
-                <div><div className="text-slate-400">Parcela Base</div><div className="font-bold text-slate-700">{fmt(c.valor_parcela_base)}</div></div>
+                <div><div className="text-slate-400">Valor do Bem</div><div className="font-bold text-slate-700 privado">{fmt(c.valor_bem)}</div></div>
+                <div><div className="text-slate-400">Parcela Base</div><div className="font-bold text-slate-700 privado">{fmt(c.valor_parcela_base)}</div></div>
                 <div><div className="text-slate-400">Taxa Adm.</div><div className="font-bold text-slate-700">{c.taxa_adm_total}%</div></div>
                 <div><div className="text-slate-400">Fator Correção</div><div className="font-bold text-slate-700">{c.fator_correcao.toFixed(4)}</div></div>
               </div>

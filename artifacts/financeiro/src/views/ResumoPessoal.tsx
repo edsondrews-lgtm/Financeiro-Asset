@@ -184,17 +184,17 @@ export default function ResumoPessoal() {
         {/* Hero saldo — mesma linguagem visual do sistema */}
         <div className={`rounded-2xl p-6 shadow-sm ${positivo ? 'bg-emerald-500' : 'bg-rose-600'} text-white`}>
           <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-2">Saldo do mês · {labelMesYM(mes)}</p>
-          <p className="text-4xl font-black tracking-tight">
+          <p className="text-4xl font-black tracking-tight privado">
             {positivo ? '' : '− '}R$ {fmtBRL(Math.abs(saldo))}
           </p>
           <div className="flex justify-between mt-5">
             <div>
               <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Entradas</p>
-              <p className="text-lg font-black">R$ {fmtBRL(totalEntradas)}</p>
+              <p className="text-lg font-black privado">R$ {fmtBRL(totalEntradas)}</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Saídas</p>
-              <p className="text-lg font-black">R$ {fmtBRL(totalSaidas)}</p>
+              <p className="text-lg font-black privado">R$ {fmtBRL(totalSaidas)}</p>
             </div>
           </div>
           <div className="mt-5">
@@ -232,7 +232,7 @@ export default function ResumoPessoal() {
               <div className="p-1.5 bg-emerald-50 rounded-lg"><TrendingUp size={14} className="text-emerald-600"/></div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Poupado</p>
             </div>
-            <p className={`text-2xl font-black tabular-nums ${saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+            <p className={`text-2xl font-black tabular-nums ${saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'} privado`}>
               R$ {fmtBRL(Math.abs(saldo))}
             </p>
             <p className="text-[11px] text-slate-400 mt-1 font-semibold">{saldo >= 0 ? 'disponível / investir' : 'déficit no mês'}</p>
@@ -301,7 +301,7 @@ export default function ResumoPessoal() {
                       <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: color }}/>
                     </div>
                     <span className="text-[10px] text-slate-400 w-8 text-right shrink-0">{pctTot}%</span>
-                    <span className="text-xs font-black text-slate-800 w-24 text-right shrink-0">R$ {fmtBRL(val)}</span>
+                    <span className="text-xs font-black text-slate-800 w-24 text-right shrink-0 privado">R$ {fmtBRL(val)}</span>
                   </div>
                 );
               })

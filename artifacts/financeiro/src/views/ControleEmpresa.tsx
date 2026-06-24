@@ -240,7 +240,7 @@ export default function ControleEmpresa() {
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{card.label}</span>
                     <div className={`p-1.5 rounded-lg bg-${card.color}-50 text-${card.color}-600`}>{card.icon}</div>
                   </div>
-                  <p className="text-xl font-black text-slate-900 mt-3 tabular-nums">{fmt(card.value)}</p>
+                  <p className="text-xl font-black text-slate-900 mt-3 tabular-nums privado">{fmt(card.value)}</p>
                 </div>
               ))}
             </div>
@@ -249,17 +249,17 @@ export default function ControleEmpresa() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-6 text-white shadow-lg shadow-emerald-100">
                 <p className="text-[10px] font-black uppercase tracking-widest text-emerald-200">Lucro Líquido Mês</p>
-                <p className="text-3xl font-black mt-2 tabular-nums">{fmt(lucroLiquidoMes)}</p>
+                <p className="text-3xl font-black mt-2 tabular-nums privado">{fmt(lucroLiquidoMes)}</p>
                 <p className="text-[10px] text-emerald-300 mt-2 font-medium">Disponível após impostos e custos</p>
               </div>
               <div className="bg-gradient-to-br from-slate-800 to-slate-950 rounded-2xl p-6 text-white shadow-lg shadow-slate-200">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Lucro Líquido Ano</p>
-                <p className="text-3xl font-black mt-2 text-emerald-400 tabular-nums">{fmt(lucroLiquidoAno)}</p>
+                <p className="text-3xl font-black mt-2 text-emerald-400 tabular-nums privado">{fmt(lucroLiquidoAno)}</p>
                 <p className="text-[10px] text-slate-500 mt-2 font-medium">Acumulado {anoAtivo}</p>
               </div>
               <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg shadow-blue-100">
                 <p className="text-[10px] font-black uppercase tracking-widest text-blue-300">Projeção Anual Líquida</p>
-                <p className="text-3xl font-black mt-2 tabular-nums">{fmt(projecaoAnual)}</p>
+                <p className="text-3xl font-black mt-2 tabular-nums privado">{fmt(projecaoAnual)}</p>
                 <p className="text-[10px] text-blue-300 mt-2 font-medium">Baseado em {mesesComMovimento} mês(es) ativo(s)</p>
               </div>
             </div>
@@ -287,7 +287,7 @@ export default function ControleEmpresa() {
                         <div className="w-full bg-slate-100 rounded-full h-2">
                           <div className={`h-2 rounded-full ${item.bar} transition-all`} style={{ width: `${item.pct}%` }}/>
                         </div>
-                        <p className="text-[10px] text-slate-400 font-semibold tabular-nums">{fmt(item.valor)}</p>
+                        <p className="text-[10px] text-slate-400 font-semibold tabular-nums privado">{fmt(item.valor)}</p>
                       </div>
                     ))}
                   </div>
@@ -339,7 +339,7 @@ export default function ControleEmpresa() {
                 <p className="text-[11px] text-slate-400 font-semibold mt-0.5">{MESES[Number(mesAtivo)-1]} {anoAtivo} · {notasFiltradas.length} registro{notasFiltradas.length !== 1 ? 's' : ''}</p>
               </div>
               <div className="bg-emerald-50 px-3 py-1.5 rounded-xl">
-                <span className="text-xs font-black text-emerald-700 tabular-nums">{fmt(faturamentoMes)}</span>
+                <span className="text-xs font-black text-emerald-700 tabular-nums privado">{fmt(faturamentoMes)}</span>
                 <span className="text-[10px] text-emerald-500 font-semibold ml-1">total</span>
               </div>
             </div>
@@ -368,7 +368,7 @@ export default function ControleEmpresa() {
                     </span>
                     <span className="col-span-4 text-xs text-slate-600 font-medium truncate pr-4">{nota.tomador}</span>
                     <span className="col-span-4 text-xs text-slate-800 font-semibold pr-4">{nota.servico}</span>
-                    <span className="col-span-1 text-xs font-black text-emerald-600 text-right tabular-nums">{fmt(Number(nota.valor))}</span>
+                    <span className="col-span-1 text-xs font-black text-emerald-600 text-right tabular-nums privado">{fmt(Number(nota.valor))}</span>
                     <div className="col-span-1 flex items-center justify-center gap-1">
                       <button onClick={() => prepararEdicaoNota(nota)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit2 size={13}/></button>
                       <button onClick={() => deletarRegistro('empresa_notas_fiscais', nota.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={13}/></button>
@@ -389,7 +389,7 @@ export default function ControleEmpresa() {
                 <p className="text-[11px] text-slate-400 font-semibold mt-0.5">{despesasFiltradas.length} registro{despesasFiltradas.length !== 1 ? 's' : ''} no período</p>
               </div>
               <div className="bg-rose-50 px-3 py-1.5 rounded-xl">
-                <span className="text-xs font-black text-rose-700 tabular-nums">{fmt(custosMensais)}</span>
+                <span className="text-xs font-black text-rose-700 tabular-nums privado">{fmt(custosMensais)}</span>
                 <span className="text-[10px] text-rose-400 font-semibold ml-1">total mensal</span>
               </div>
             </div>
@@ -417,7 +417,7 @@ export default function ControleEmpresa() {
                     <span className="col-span-2">
                       <span className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-bold ${desp.periodicidade === 'Anual' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>{desp.periodicidade}</span>
                     </span>
-                    <span className="col-span-2 text-xs font-black text-rose-600 text-right tabular-nums">{fmt(Number(desp.valor))}</span>
+                    <span className="col-span-2 text-xs font-black text-rose-600 text-right tabular-nums privado">{fmt(Number(desp.valor))}</span>
                     <div className="col-span-1 flex items-center justify-center gap-1">
                       <button onClick={() => prepararEdicaoDespesa(desp)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit2 size={13}/></button>
                       <button onClick={() => deletarRegistro('empresa_despesas', desp.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={13}/></button>
@@ -442,7 +442,7 @@ export default function ControleEmpresa() {
               ].map((c,i) => (
                 <div key={i} className={`${c.bg} rounded-2xl p-5 border border-white/60`}>
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{c.label}</p>
-                  <p className={`text-xl font-black mt-2 tabular-nums ${c.color}`}>{fmt(c.value)}</p>
+                  <p className={`text-xl font-black mt-2 tabular-nums ${c.color} privado`}>{fmt(c.value)}</p>
                 </div>
               ))}
             </div>
@@ -475,11 +475,11 @@ export default function ControleEmpresa() {
                         <span className={`text-xs font-black ${isAtivo ? 'text-blue-700' : 'text-slate-700'}`}>{MESES_CURTOS[Number(mKey)-1]}</span>
                         {isAtivo && <span className="text-[9px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-md">ATU</span>}
                       </div>
-                      <span className="col-span-1 text-xs font-black text-emerald-600 tabular-nums">{fatM>0?fmt(fatM):'—'}</span>
+                      <span className="col-span-1 text-xs font-black text-emerald-600 tabular-nums privado">{fatM>0?fmt(fatM):'—'}</span>
                       <span className="col-span-1 text-xs text-slate-400 font-semibold">{(alM*100).toFixed(0)}%</span>
-                      <span className="col-span-1 text-xs text-amber-600 font-semibold tabular-nums">{impM>0?fmt(impM):'—'}</span>
-                      <span className="col-span-2 text-xs text-rose-600 font-semibold tabular-nums">{custM>0?fmt(custM):'—'}</span>
-                      <span className={`col-span-1 text-xs font-black text-right tabular-nums ${lucM>=0?'text-slate-900':'text-rose-600'}`}>{fatM>0?fmt(lucM):'—'}</span>
+                      <span className="col-span-1 text-xs text-amber-600 font-semibold tabular-nums privado">{impM>0?fmt(impM):'—'}</span>
+                      <span className="col-span-2 text-xs text-rose-600 font-semibold tabular-nums privado">{custM>0?fmt(custM):'—'}</span>
+                      <span className={`col-span-1 text-xs font-black text-right tabular-nums ${lucM>=0?'text-slate-900':'text-rose-600'} privado`}>{fatM>0?fmt(lucM):'—'}</span>
                       <div className="col-span-2 flex items-center gap-2 justify-end">
                         {fatM > 0 && (
                           <>

@@ -391,19 +391,19 @@ export default function PrevidenciaPainel() {
             {/* hero */}
             <div className="bg-gradient-to-br from-violet-700 to-indigo-700 rounded-2xl p-6 text-white shadow-xl">
               <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mb-2">Saldo atual · Maio 2026</p>
-              <p className="text-4xl font-black tracking-tight">R$ {fmtBRL(SALDO_ATUAL)}</p>
+              <p className="text-4xl font-black tracking-tight privado">R$ {fmtBRL(SALDO_ATUAL)}</p>
               <div className="grid grid-cols-3 gap-4 mt-5">
                 <div>
                   <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Total aportado</p>
-                  <p className="text-lg font-black">R$ {fmtBRL(totalAportado)}</p>
+                  <p className="text-lg font-black privado">R$ {fmtBRL(totalAportado)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Total rendido</p>
-                  <p className="text-lg font-black">R$ {fmtBRL(totalRendido)}</p>
+                  <p className="text-lg font-black privado">R$ {fmtBRL(totalRendido)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Rendimento/dia</p>
-                  <p className="text-lg font-black">R$ {fmtBRL(rendMedio / 30)}</p>
+                  <p className="text-lg font-black privado">R$ {fmtBRL(rendMedio / 30)}</p>
                   <p className="text-[9px] opacity-50">sem trabalhar</p>
                 </div>
               </div>
@@ -420,7 +420,7 @@ export default function PrevidenciaPainel() {
                 <div key={k.label} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                   <div className={`p-1.5 rounded-lg w-fit mb-3 ${k.bg}`}>{k.icon}</div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{k.label}</p>
-                  <p className={`text-xl font-black ${k.color}`}>{k.value}</p>
+                  <p className={`text-xl font-black ${k.color} privado`}>{k.value}</p>
                   <p className="text-[10px] text-slate-400 mt-1">{k.sub}</p>
                 </div>
               ))}
@@ -446,7 +446,7 @@ export default function PrevidenciaPainel() {
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Caminho até R$ 1.000.000</p>
                   <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                    Mantendo R$ {fmtBRL(aporteAtual)}/mês e taxa de {fmtPct(taxaMensalEst * 100)}/mês
+                    Mantendo R$ <span className="privado">{fmtBRL(aporteAtual)}</span>/mês e taxa de {fmtPct(taxaMensalEst * 100)}/mês
                   </p>
                 </div>
                 <div className="text-right">
@@ -461,7 +461,7 @@ export default function PrevidenciaPainel() {
                   style={{ width: `${Math.min(100, (SALDO_ATUAL / 1000000) * 100)}%` }}/>
               </div>
               <div className="flex justify-between text-[10px] font-semibold text-slate-400">
-                <span>R$ {fmtBRL(SALDO_ATUAL)} hoje</span>
+                <span className="privado">R$ {fmtBRL(SALDO_ATUAL)} hoje</span>
                 <span>{((SALDO_ATUAL / 1000000) * 100).toFixed(1)}% da meta</span>
                 <span>R$ 1.000.000</span>
               </div>
@@ -544,24 +544,24 @@ export default function PrevidenciaPainel() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Seu fundo (real)</p>
-                    <p className="text-2xl font-black text-violet-700">R$ {fmtBRL(SALDO_ATUAL)}</p>
+                    <p className="text-2xl font-black text-violet-700 privado">R$ {fmtBRL(SALDO_ATUAL)}</p>
                     <p className="text-[10px] text-slate-400 mt-1">saldo atual confirmado</p>
                   </div>
                   <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Se tivesse no CDI</p>
-                    <p className={`text-2xl font-black ${ganhoVsCDI >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <p className={`text-2xl font-black ${ganhoVsCDI >= 0 ? 'text-emerald-600' : 'text-rose-600'} privado`}>
                       R$ {fmtBRL(ultComp?.saldoCDI ?? 0)}
                     </p>
-                    <p className={`text-[11px] font-bold mt-1 ${ganhoVsCDI >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <p className={`text-[11px] font-bold mt-1 ${ganhoVsCDI >= 0 ? 'text-emerald-600' : 'text-rose-600'} privado`}>
                       {ganhoVsCDI >= 0 ? '▲' : '▼'} R$ {fmtBRL(Math.abs(ganhoVsCDI))} vs CDI
                     </p>
                   </div>
                   <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Se tivesse no IPCA</p>
-                    <p className={`text-2xl font-black ${ganhoVsIPCA >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <p className={`text-2xl font-black ${ganhoVsIPCA >= 0 ? 'text-emerald-600' : 'text-rose-600'} privado`}>
                       R$ {fmtBRL(ultComp?.saldoIPCA ?? 0)}
                     </p>
-                    <p className={`text-[11px] font-bold mt-1 ${ganhoVsIPCA >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <p className={`text-[11px] font-bold mt-1 ${ganhoVsIPCA >= 0 ? 'text-emerald-600' : 'text-rose-600'} privado`}>
                       {ganhoVsIPCA >= 0 ? '▲' : '▼'} R$ {fmtBRL(Math.abs(ganhoVsIPCA))} vs IPCA
                     </p>
                   </div>
@@ -645,7 +645,7 @@ export default function PrevidenciaPainel() {
                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full">
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${(val/max)*100}%`, background: cor }}/>
                       </div>
-                      <span className="text-xs font-black text-slate-800 w-24 text-right">R$ {fmtBRL(val)}</span>
+                      <span className="text-xs font-black text-slate-800 w-24 text-right privado">R$ {fmtBRL(val)}</span>
                     </div>
                   );
                 })}
@@ -698,7 +698,7 @@ export default function PrevidenciaPainel() {
               <div className="bg-violet-600 text-white rounded-2xl p-5 shadow-sm">
                 <p className="text-[10px] font-black opacity-70 uppercase tracking-widest mb-2">Sem aporte extra</p>
                 <p className="text-2xl font-black">{Math.floor(mesesSemExtra/12)}a {mesesSemExtra%12}m</p>
-                <p className="text-[11px] opacity-70 mt-1">apenas R$ {fmtBRL(aporteAtual)}/mês</p>
+                <p className="text-[11px] opacity-70 mt-1">apenas R$ <span className="privado">{fmtBRL(aporteAtual)}</span>/mês</p>
               </div>
 
               {simModo === 'aporte' && extraAnual > 0 && (
@@ -714,15 +714,15 @@ export default function PrevidenciaPainel() {
               {simModo === 'meta' && anosAlvo > 0 && (
                 <div className="bg-emerald-600 text-white rounded-2xl p-5 shadow-sm">
                   <p className="text-[10px] font-black opacity-70 uppercase tracking-widest mb-2">Para chegar em {anosAlvo} anos</p>
-                  <p className="text-2xl font-black">R$ {fmtBRL(extraNec)}/ano</p>
+                  <p className="text-2xl font-black privado">R$ {fmtBRL(extraNec)}/ano</p>
                   <p className="text-[11px] opacity-70 mt-1">aporte extra anual necessário</p>
                 </div>
               )}
 
               <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Renda passiva ao atingir a meta</p>
-                <p className="text-2xl font-black text-violet-700">R$ {fmtBRL(meta * taxaMensalEst)}/mês</p>
-                <p className="text-[10px] text-slate-400 mt-1">rendimento mensal estimado sobre R$ {fmtBRL(meta)}</p>
+                <p className="text-2xl font-black text-violet-700 privado">R$ {fmtBRL(meta * taxaMensalEst)}/mês</p>
+                <p className="text-[10px] text-slate-400 mt-1">rendimento mensal estimado sobre R$ <span className="privado">{fmtBRL(meta)}</span></p>
               </div>
             </div>
 
@@ -785,7 +785,7 @@ export default function PrevidenciaPainel() {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-sm font-black text-slate-800">Aportes / Contribuições</h3>
-                <p className="text-xs text-slate-400 font-semibold mt-0.5">{aportes.length} registros · Total: R$ {fmtBRL(totalAportado)}</p>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">{aportes.length} registros · Total: <span className="privado">R$ {fmtBRL(totalAportado)}</span></p>
               </div>
               <button onClick={() => { setEditIdA(null); setFormA({ ...formAp0 }); setModalAp(true); }}
                 className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm">
@@ -839,7 +839,7 @@ export default function PrevidenciaPainel() {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-sm font-black text-slate-800">Rendimentos Mensais</h3>
-                <p className="text-xs text-slate-400 font-semibold mt-0.5">{rendimentos.length} registros · Total: R$ {fmtBRL(totalRendido)}</p>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">{rendimentos.length} registros · Total: <span className="privado">R$ {fmtBRL(totalRendido)}</span></p>
               </div>
               <button onClick={() => { setEditIdR(null); setFormR({ ...formRnd0 }); setModalRnd(true); }}
                 className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm">
@@ -865,10 +865,10 @@ export default function PrevidenciaPainel() {
                   {[...rendimentos].reverse().map(r => (
                     <tr key={r.id} className="hover:bg-slate-50/60 transition-colors group/row">
                       <td className="py-3 text-[11px] text-slate-500 font-semibold">{labelMesYM(competenciaToYM(r.competencia))}</td>
-                      <td className={`py-3 text-xs font-black ${Number(r.valor) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <td className={`py-3 text-xs font-black ${Number(r.valor) >= 0 ? 'text-emerald-600' : 'text-rose-600'} privado`}>
                         {Number(r.valor) >= 0 ? '+' : ''} R$ {fmtBRL(Number(r.valor))}
                       </td>
-                      <td className="py-3 text-xs text-slate-600 font-semibold">
+                      <td className="py-3 text-xs text-slate-600 font-semibold privado">
                         {r.saldo_final ? `R$ ${fmtBRL(Number(r.saldo_final))}` : '—'}
                       </td>
                       <td className="py-3 text-[11px] text-slate-400">
