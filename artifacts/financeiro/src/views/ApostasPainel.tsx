@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabaseClient';
 import {
   TrendingUp, TrendingDown, Plus, X, Edit2, Trash2,
   AlertTriangle, ChevronLeft, ChevronRight, Target,
-  CheckCircle2, AlertCircle, Eye, EyeOff,
+  CheckCircle2, AlertCircle, Eye, EyeOff, BarChart2,
+  ArrowUpRight, ArrowDownRight, Wallet, Activity,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -59,13 +60,13 @@ function labelMesYM(ym: string) {
   return `${MESES_LABEL[m - 1]}/${String(a).slice(2)}`;
 }
 
-const inputCls = 'w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 hover:border-slate-300 transition-colors';
-const inputClsErr = 'w-full px-3 py-2.5 bg-rose-50 border border-rose-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-rose-400 transition-colors';
+const inputCls = 'w-full px-3 py-2.5 rounded-xl text-xs font-semibold focus:outline-none transition-colors';
+const inputClsErr = 'w-full px-3 py-2.5 rounded-xl text-xs font-semibold focus:outline-none transition-colors';
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</label>
+      <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</label>
       {children}
       {error && <p className="text-[10px] font-bold text-rose-500">{error}</p>}
     </div>
@@ -269,8 +270,8 @@ export default function ApostasPainel() {
               ))}
             </div>
             <button onClick={() => { setEditId(null); setForm({ ...formInicial }); setErrosForm({}); setModal(true); }}
-              className="flex items-center gap-1.5 text-white text-xs font-bold px-3 sm:px-4 py-2 rounded-xl transition-colors shadow-sm"
-              style={{ backgroundColor: 'var(--bg-elevated)' }}>
+              className="flex items-center gap-1.5 text-xs font-bold px-3 sm:px-4 py-2 rounded-xl transition-colors shadow-sm"
+              style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
               <Plus size={13}/> <span className="hidden sm:inline">Novo lançamento</span><span className="sm:hidden">Novo</span>
             </button>
           </div>
@@ -287,138 +288,176 @@ export default function ApostasPainel() {
         {subAba === 'dashboard' && (
           <div className="space-y-5">
 
-            {/* Hero resultado geral + tendência */}
-            <div className={`rounded-2xl p-5 sm:p-6 text-white shadow-xl ${resultado >= 0 ? 'bg-gradient-to-br from-emerald-600 to-teal-600' : 'bg-gradient-to-br from-rose-600 to-red-700'}`}>
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mb-2">Resultado geral · todas as casas</p>
-                  <p className={`text-3xl sm:text-4xl font-black tracking-tight ${privCls}`}>
-                    {resultado >= 0 ? '+' : '−'} R$ {fmtBRL(Math.abs(resultado))}
-                  </p>
-                </div>
-                {tendencia !== null && tendenciaMelhorando !== null && (
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold self-start ${
-                    tendenciaMelhorando ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70'
-                  }`}>
-                    {tendenciaMelhorando ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
-                    {tendencia >= 0 ? '+' : ''}{tendencia.toFixed(1)}% vs mês anterior
+            {/* Hero resultado geral */}
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+              <div className={`px-6 py-5 ${resultado >= 0 ? 'bg-gradient-to-r from-emerald-600/10 to-teal-600/5' : 'bg-gradient-to-r from-rose-600/10 to-red-600/5'}`}
+                style={{ borderBottom: '1px solid var(--border-light)' }}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl ${resultado >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
+                      <Target size={18} className={resultado >= 0 ? 'text-emerald-500' : 'text-rose-500'}/>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Resultado Geral</p>
+                      <p className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>Todas as casas</p>
+                    </div>
                   </div>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-5">
-                <div>
-                  <p className="text-[9px] sm:text-[10px] opacity-60 uppercase tracking-widest mb-1">Depositado</p>
-                  <p className={`text-base sm:text-lg font-black ${privCls}`}>R$ {fmtBRL(totalDepositos)}</p>
-                </div>
-                <div>
-                  <p className="text-[9px] sm:text-[10px] opacity-60 uppercase tracking-widest mb-1">Sacado</p>
-                  <p className={`text-base sm:text-lg font-black ${privCls}`}>R$ {fmtBRL(totalSaques)}</p>
-                </div>
-                <div>
-                  <p className="text-[9px] sm:text-[10px] opacity-60 uppercase tracking-widest mb-1">ROI geral</p>
-                  <p className="text-base sm:text-lg font-black">{roi >= 0 ? '+' : ''}{roi.toFixed(1)}%</p>
+                  {tendencia !== null && tendenciaMelhorando !== null && (
+                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold ${
+                      tendenciaMelhorando ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                    }`}>
+                      {tendenciaMelhorando ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
+                      {tendencia >= 0 ? '+' : ''}{tendencia.toFixed(1)}% vs mês anterior
+                    </div>
+                  )}
                 </div>
               </div>
+              <div className="px-6 py-6">
+                <p className={`text-4xl sm:text-5xl font-black tracking-tight ${privCls}`}
+                  style={{ color: resultado >= 0 ? 'var(--chart-green)' : 'var(--chart-red)' }}>
+                  {resultado >= 0 ? '+' : '−'} R$ {fmtBRL(Math.abs(resultado))}
+                </p>
+              </div>
+            </div>
+
+            {/* Stats grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                { label: 'Depositado', value: totalDepositos, icon: <ArrowDownRight size={14}/>, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+                { label: 'Sacado', value: totalSaques, icon: <ArrowUpRight size={14}/>, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                { label: 'Resultado', value: resultado, icon: <Activity size={14}/>, color: resultado >= 0 ? 'text-emerald-500' : 'text-rose-500', bg: resultado >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10' },
+                { label: 'ROI', value: null, roi: roi, icon: <BarChart2 size={14}/>, color: roi >= 0 ? 'text-emerald-500' : 'text-rose-500', bg: roi >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10' },
+              ].map((stat, i) => (
+                <div key={i} className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`p-1.5 rounded-lg ${stat.bg}`}>
+                      <span className={stat.color}>{stat.icon}</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>{stat.label}</p>
+                  {stat.roi !== undefined ? (
+                    <p className={`text-lg font-black ${stat.color} ${privCls}`}>{stat.roi >= 0 ? '+' : ''}{stat.roi.toFixed(1)}%</p>
+                  ) : (
+                    <p className={`text-lg font-black ${stat.color} ${privCls}`}>R$ {fmtBRL(Math.abs(stat.value!))}</p>
+                  )}
+                </div>
+              ))}
             </div>
 
             {/* Alerta motivacional */}
             {resultado < 0 && (
-              <div className="flex gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl items-start">
-                <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5"/>
+              <div className="flex gap-3 p-4 rounded-xl items-start" style={{ backgroundColor: 'var(--color-warning-bg)', border: '1px solid var(--color-warning)' }}>
+                <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5"/>
                 <div>
-                  <p className="text-sm font-black text-amber-900">Atenção ao saldo</p>
-                  <p className="text-xs text-amber-700 font-medium mt-1">
+                  <p className="text-xs font-bold" style={{ color: 'var(--color-warning)' }}>Atenção ao saldo</p>
+                  <p className="text-[11px] font-medium mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     Prejuízo acumulado de <strong className={privCls}>R$ {fmtBRL(Math.abs(resultado))}</strong>.
-                    {temHistorico && tendenciaMelhorando === false && ' O resultado piorou frente ao mês anterior.'}
+                    {temHistorico && tendenciaMelhorando === false && ' Resultado piorou vs mês anterior.'}
                   </p>
                 </div>
               </div>
             )}
 
             {/* Cards por casa */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {statsCasa.map(s => {
-                const cfg = CASA_CFG[s.casa];
-                const positivo = s.res >= 0;
-                return (
-                  <div key={s.casa} className="rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-                    <div className={`${cfg.bg} px-5 py-4`}>
-                      <p className={`text-[10px] font-black uppercase tracking-widest ${cfg.text} opacity-70 mb-1`}>{s.casa}</p>
-                      <p className={`text-2xl font-black ${cfg.text} ${privCls}`}>
-                        {positivo ? '+' : '−'} R$ {fmtBRL(Math.abs(s.res))}
-                      </p>
-                      <p className={`text-[11px] ${cfg.text} opacity-60 mt-0.5`}>
-                        {positivo ? '▲ Lucro' : '▼ Prejuízo'} · ROI {s.roi >= 0 ? '+' : ''}{s.roi.toFixed(1)}%
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2" style={{ borderTop: '1px solid var(--border-light)' }}>
-                      <div className="px-5 py-3" style={{ borderRight: '1px solid var(--border-light)' }}>
-                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Depositado</p>
-                        <p className={`text-base font-black text-rose-600 ${privCls}`}>R$ {fmtBRL(s.dep)}</p>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Por Casa</p>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {statsCasa.map(s => {
+                  const cfg = CASA_CFG[s.casa];
+                  const positivo = s.res >= 0;
+                  return (
+                    <div key={s.casa} className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+                      <div className="h-1" style={{ backgroundColor: cfg.accent }}/>
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{s.casa}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${positivo ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                            {positivo ? '▲ Lucro' : '▼ Prejuízo'}
+                          </span>
+                        </div>
+                        <p className={`text-xl font-black mb-3 ${privCls}`}
+                          style={{ color: positivo ? 'var(--chart-green)' : 'var(--chart-red)' }}>
+                          {positivo ? '+' : '−'} R$ {fmtBRL(Math.abs(s.res))}
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Depositado</p>
+                            <p className={`text-xs font-black text-rose-500 ${privCls}`}>R$ {fmtBRL(s.dep)}</p>
+                          </div>
+                          <div className="w-px h-6" style={{ backgroundColor: 'var(--border-color)' }}/>
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Sacado</p>
+                            <p className={`text-xs font-black text-emerald-500 ${privCls}`}>R$ {fmtBRL(s.saq)}</p>
+                          </div>
+                          <div className="w-px h-6" style={{ backgroundColor: 'var(--border-color)' }}/>
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>ROI</p>
+                            <p className={`text-xs font-black ${s.roi >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{s.roi >= 0 ? '+' : ''}{s.roi.toFixed(1)}%</p>
+                          </div>
+                        </div>
                       </div>
-                      <div className="px-5 py-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Sacado</p>
-                        <p className={`text-base font-black text-emerald-600 ${privCls}`}>R$ {fmtBRL(s.saq)}</p>
-                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Gráfico evolução mensal */}
-            <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-              <p className="text-[10px] font-black uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Resultado mensal — últimos 12 meses</p>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={evolucaoMensal} margin={{ top: 4, right: 4, left: -15, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)"/>
-                  <XAxis dataKey="mes" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
-                  <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
-                  <Tooltip
-                    formatter={(v: number) => [`R$ ${fmtBRL(v)}`, 'Resultado']}
-                    contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid var(--border-color)', boxShadow: 'none', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-                  />
-                  <ReferenceLine y={0} stroke="var(--border-color)"/>
-                  <Bar dataKey="resultado" radius={[3,3,0,0]}>
-                    {evolucaoMensal.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.resultado >= 0 ? 'var(--chart-green)' : 'var(--chart-red)'}/>
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="flex gap-4 mt-2">
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-green)' }}/>Lucro
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-red)' }}/>Prejuízo
-                </span>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Gráfico depósitos vs saques */}
-            <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-              <p className="text-[10px] font-black uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Depósitos vs saques — últimos 12 meses</p>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={evolucaoMensal} margin={{ top: 4, right: 4, left: -15, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)"/>
-                  <XAxis dataKey="mes" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
-                  <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
-                  <Tooltip
-                    formatter={(v: number, n: string) => [`R$ ${fmtBRL(v)}`, n === 'depositos' ? 'Depósitos' : 'Saques']}
-                    contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid var(--border-color)', boxShadow: 'none', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-                  />
-                  <Bar dataKey="depositos" fill="var(--chart-red)" radius={[3,3,0,0]} name="depositos"/>
-                  <Bar dataKey="saques"    fill="var(--chart-green)" radius={[3,3,0,0]} name="saques"/>
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="flex gap-4 mt-2">
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-red)' }}/>Depósitos
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-                  <span className="w-3 h-3 rounded inline-block" style={{ backgroundColor: 'var(--chart-green)' }}/>Saques
-                </span>
+            {/* Gráficos */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {/* Gráfico evolução mensal */}
+              <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Resultado Mensal</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={evolucaoMensal} margin={{ top: 4, right: 4, left: -15, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false}/>
+                    <XAxis dataKey="mes" tick={{ fontSize: 8, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
+                    <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 8, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
+                    <Tooltip
+                      formatter={(v: number) => [`R$ ${fmtBRL(v)}`, 'Resultado']}
+                      contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid var(--border-color)', boxShadow: 'none', backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+                    />
+                    <ReferenceLine y={0} stroke="var(--border-color)"/>
+                    <Bar dataKey="resultado" radius={[3,3,0,0]}>
+                      {evolucaoMensal.map((entry, idx) => (
+                        <Cell key={idx} fill={entry.resultado >= 0 ? 'var(--chart-green)' : 'var(--chart-red)'}/>
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="flex gap-4 mt-3">
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: 'var(--chart-green)' }}/>Lucro
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: 'var(--chart-red)' }}/>Prejuízo
+                  </span>
+                </div>
+              </div>
+
+              {/* Gráfico depósitos vs saques */}
+              <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Depósitos vs Saques</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={evolucaoMensal} margin={{ top: 4, right: 4, left: -15, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false}/>
+                    <XAxis dataKey="mes" tick={{ fontSize: 8, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
+                    <YAxis tickFormatter={v => `R$${v}`} tick={{ fontSize: 8, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}/>
+                    <Tooltip
+                      formatter={(v: number, n: string) => [`R$ ${fmtBRL(v)}`, n === 'depositos' ? 'Depósitos' : 'Saques']}
+                      contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid var(--border-color)', boxShadow: 'none', backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+                    />
+                    <Bar dataKey="depositos" fill="var(--chart-red)" radius={[3,3,0,0]} name="depositos" opacity={0.8}/>
+                    <Bar dataKey="saques"    fill="var(--chart-green)" radius={[3,3,0,0]} name="saques" opacity={0.8}/>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="flex gap-4 mt-3">
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: 'var(--chart-red)' }}/>Depósitos
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: 'var(--chart-green)' }}/>Saques
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -533,10 +572,14 @@ export default function ApostasPainel() {
             <form onSubmit={salvar} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Data" error={errosForm.data}>
-                  <input required type="date" className={errosForm.data ? inputClsErr : inputCls} value={form.data} onChange={e => { setForm({ ...form, data: e.target.value }); setErrosForm(p => ({ ...p, data: '' })); }}/>
+                  <input required type="date" className={inputCls} value={form.data}
+                    style={{ backgroundColor: 'var(--bg-tertiary)', border: `1px solid ${errosForm.data ? 'var(--color-danger)' : 'var(--border-color)'}`, color: 'var(--text-primary)' }}
+                    onChange={e => { setForm({ ...form, data: e.target.value }); setErrosForm(p => ({ ...p, data: '' })); }}/>
                 </Field>
                 <Field label="Casa">
-                  <select className={inputCls} value={form.casa} onChange={e => setForm({ ...form, casa: e.target.value })}>
+                  <select className={inputCls} value={form.casa}
+                    style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                    onChange={e => setForm({ ...form, casa: e.target.value })}>
                     {CASAS.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </Field>
@@ -546,27 +589,31 @@ export default function ApostasPainel() {
                   {(['DEPOSITO','SAQUE'] as const).map(t => (
                     <button key={t} type="button"
                       onClick={() => setForm({ ...form, tipo: t })}
-                      className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                        form.tipo === t
-                          ? t === 'DEPOSITO' ? 'bg-rose-600 text-white border-rose-600' : 'bg-emerald-600 text-white border-emerald-600'
-                          : 'text-slate-500 border-slate-200 hover:border-slate-400'
-                      }`}
-                      style={form.tipo !== t ? { backgroundColor: 'var(--bg-tertiary)' } : {}}>
+                      className="py-2.5 rounded-xl text-xs font-bold border transition-all"
+                      style={form.tipo === t
+                        ? t === 'DEPOSITO'
+                          ? { backgroundColor: '#e11d48', color: 'white', borderColor: '#e11d48' }
+                          : { backgroundColor: '#059669', color: 'white', borderColor: '#059669' }
+                        : { backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)', borderColor: 'var(--border-color)' }
+                      }>
                       {t === 'DEPOSITO' ? '↓ Depósito' : '↑ Saque'}
                     </button>
                   ))}
                 </div>
               </Field>
               <Field label="Valor (R$)" error={errosForm.valor}>
-                <input required type="number" step="0.01" min="0.01" className={errosForm.valor ? inputClsErr : inputCls} placeholder="0,00" value={form.valor}
+                <input required type="number" step="0.01" min="0.01" className={inputCls} placeholder="0,00" value={form.valor}
+                  style={{ backgroundColor: 'var(--bg-tertiary)', border: `1px solid ${errosForm.valor ? 'var(--color-danger)' : 'var(--border-color)'}`, color: 'var(--text-primary)' }}
                   onChange={e => { setForm({ ...form, valor: e.target.value }); setErrosForm(p => ({ ...p, valor: '' })); }}/>
               </Field>
               <Field label="Observação (opcional)">
-                <input type="text" className={inputCls} placeholder="Ex: bônus de boas-vindas..." value={form.observacao} onChange={e => setForm({ ...form, observacao: e.target.value })}/>
+                <input type="text" className={inputCls} placeholder="Ex: bônus de boas-vindas..." value={form.observacao}
+                  style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  onChange={e => setForm({ ...form, observacao: e.target.value })}/>
               </Field>
               <button type="submit" disabled={saving}
-                className="w-full text-white font-bold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                className="w-full font-bold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style={{ backgroundColor: 'var(--accent)', color: 'white' }}>
                 {saving && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>}
                 {editId ? 'Salvar alterações' : 'Registrar'}
               </button>
