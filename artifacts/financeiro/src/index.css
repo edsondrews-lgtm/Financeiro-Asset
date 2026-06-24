@@ -220,7 +220,8 @@
 }
 
 .dark-theme .border-slate-200,
-.dark-theme .border-slate-100 {
+.dark-theme .border-slate-100,
+.dark-theme .border-slate-50 {
   border-color: var(--border-color) !important;
 }
 
@@ -271,12 +272,21 @@
 }
 
 /* Tables */
+.dark-theme table {
+  background-color: var(--bg-secondary) !important;
+}
+.dark-theme thead tr {
+  border-color: var(--border-color) !important;
+}
 .dark-theme tbody tr {
   border-color: var(--border-color) !important;
 }
-
 .dark-theme tbody tr:hover {
   background-color: var(--bg-elevated) !important;
+}
+.dark-theme tfoot {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
 }
 
 /* Modals */

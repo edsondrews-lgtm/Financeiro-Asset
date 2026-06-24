@@ -1464,10 +1464,10 @@ function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
                   </td>
 
                   {/* Vencimento */}
-                  <td className="px-3 py-2.5 text-slate-500">
+                  <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)' }}>
                     {fmtMes(l.dataVenc)}
                     {l.aposEntrega && (
-                      <span className="ml-1 text-[9px] text-rose-400 font-bold">
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ backgroundColor: 'rgba(244,63,94,0.12)', color: 'var(--chart-red)' }}>
                         +{l.mAfEntrega}m pós-entrega
                       </span>
                     )}
