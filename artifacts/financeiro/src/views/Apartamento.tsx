@@ -1447,18 +1447,13 @@ function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {linhas.map(l => (
-                <tr key={l.numero} className={`transition-colors ${
-                  l.jaAdiantada ? 'bg-amber-50/50 hover:bg-amber-50' :
-                  l.jaPaga      ? 'bg-slate-50/40 opacity-60' :
-                  l.aposEntrega ? 'hover:bg-rose-50/30' :
-                                  'hover:bg-emerald-50/30'
-                }`}>
+                <tr key={l.numero} className={`transition-colors ${l.jaAdiantada || l.jaPaga ? 'opacity-60' : 'hover:bg-slate-50/30'}`}>
                   {/* Nº */}
                   <td className="px-4 py-2.5">
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
-                      l.jaAdiantada ? 'bg-amber-100 text-amber-700' :
+                      l.jaAdiantada ? 'bg-emerald-100/30 text-emerald-600' :
                       l.jaPaga      ? 'bg-slate-100 text-slate-400' :
-                      l.aposEntrega ? 'bg-rose-100 text-rose-700' :
+                      l.aposEntrega ? 'bg-rose-100 text-rose-600' :
                                       'bg-slate-100 text-slate-600'
                     }`}>#{l.numero}</span>
                   </td>
@@ -1477,11 +1472,11 @@ function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
                   <td className="px-3 py-2.5 text-right">
                     {l.jaAdiantada && l.valorPagoReal !== null ? (
                       <div>
-                        <div className="font-black text-amber-600">{fmt2(l.valorPagoReal)}</div>
-                        <div className="text-[9px] text-slate-400">pago em {l.dataVenc ? '' : ''}adiantado</div>
+                        <div style={{ color: '#e2e8f0' }} className="font-black">{fmt2(l.valorPagoReal)}</div>
+                        <div className="text-[9px]" style={{ color: '#64748b' }}>pago adiantado</div>
                       </div>
                     ) : l.jaPaga && l.valorPagoReal !== null ? (
-                      <div className="font-bold text-slate-400">{fmt2(l.valorPagoReal)}</div>
+                      <div className="font-bold" style={{ color: '#e2e8f0' }}>{fmt2(l.valorPagoReal)}</div>
                     ) : (
                       <div>
                         <div className="font-bold text-slate-700">{fmt2(l.valorHoje)}</div>
@@ -1492,10 +1487,16 @@ function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
 
                   {/* Valor projetado */}
                   <td className="px-3 py-2.5 text-right">
-                    <div className="font-bold text-rose-600">{fmt2(l.valorProjetado)}</div>
-                    {l.aposEntrega && (
-                      <div className="text-[9px] text-rose-300">
-                        CUB + {((Math.pow(1.01, l.mAfEntrega) - 1) * 100).toFixed(1)}% juros
+                    {l.jaAdiantada || l.jaPaga ? (
+                      <div className="font-bold" style={{ color: '#fda4af' }}>{fmt2(l.valorProjetado)}</div>
+                    ) : (
+                      <div>
+                        <div className="font-bold" style={{ color: 'var(--chart-red)' }}>{fmt2(l.valorProjetado)}</div>
+                        {l.aposEntrega && (
+                          <div className="text-[9px]" style={{ color: 'var(--chart-red)', opacity: 0.6 }}>
+                            CUB + {((Math.pow(1.01, l.mAfEntrega) - 1) * 100).toFixed(1)}% juros
+                          </div>
+                        )}
                       </div>
                     )}
                   </td>
@@ -1504,14 +1505,16 @@ function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
                   <td className="px-3 py-2.5 text-right">
                     {l.jaAdiantada ? (
                       <div>
-                        <div className="font-black text-emerald-600">+{fmt2(l.economiaJaObtida)}</div>
-                        <div className="text-[9px] text-emerald-400">já economizado ✓</div>
+                        <div className="font-black" style={{ color: '#4ade80' }}>+{fmt2(l.economiaJaObtida)}</div>
+                        <div className="text-[9px]" style={{ color: '#4ade80', opacity: 0.6 }}>já economizado ✓</div>
                       </div>
                     ) : l.jaPaga ? (
                       <span className="text-slate-300">—</span>
                     ) : (
                       <div>
-                        <div className={`font-black ${l.economiaSePagoHoje > 500 ? 'text-emerald-600' : l.economiaSePagoHoje > 100 ? 'text-emerald-500' : 'text-emerald-400'}`}>
+                        <div className="font-black" style={{
+                          color: l.economiaSePagoHoje > 500 ? '#4ade80' : l.economiaSePagoHoje > 100 ? '#34d399' : '#6ee7b7'
+                        }}>
                           +{fmt2(l.economiaSePagoHoje)}
                         </div>
                         <div className="text-[9px] text-slate-400">se adiantar hoje</div>
@@ -1522,7 +1525,7 @@ function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
                   {/* Status */}
                   <td className="px-3 py-2.5 text-center">
                     {l.jaAdiantada ? (
-                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[9px] font-bold">✓ Adiantada</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold" style={{ backgroundColor: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>✓ Adiantada</span>
                     ) : l.jaPaga ? (
                       <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded-full text-[9px] font-bold">✓ Paga</span>
                     ) : l.aposEntrega ? (
@@ -1548,14 +1551,14 @@ function AbaSimulador({ imovel, parcelas, cubEfetivoValor, reforcos }: {
                 <td colSpan={2} className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-wider">
                   Resumo
                 </td>
-                <td className="px-3 py-3 text-right text-xs font-black text-slate-600">
+                <td className="px-3 py-3 text-right text-xs font-black" style={{ color: 'var(--text-secondary)' }}>
                   {fmt2(totalSeAdiantarTudo + adiantadas.reduce((s,l) => s + (l.valorPagoReal ?? 0), 0))}
                 </td>
-                <td className="px-3 py-3 text-right text-xs font-black text-rose-500">
+                <td className="px-3 py-3 text-right text-xs font-black" style={{ color: '#fda4af' }}>
                   {fmt2(pendentes.reduce((s,l) => s + l.valorProjetado, 0) + adiantadas.reduce((s,l) => s + l.valorProjetado, 0))}
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <div className="text-xs font-black text-emerald-600">
+                  <div className="text-xs font-black" style={{ color: '#4ade80' }}>
                     +{fmt2(totalEconomiaJaObtida + totalEconomiaPotencial)}
                   </div>
                   <div className="text-[9px] text-slate-400">total (já obtida + potencial)</div>
