@@ -711,6 +711,12 @@ export default function Consorcios() {
 
   useEffect(() => { carregar() }, [])
 
+  useEffect(() => {
+    if (!carregando && consorcios.length === 1 && !selecionado) {
+      setSelecionado(consorcios[0])
+    }
+  }, [carregando, consorcios])
+
   if (selecionado)
     return <DashboardConsorcio consorcio={selecionado} onVoltar={() => { setSelecionado(null); carregar() }} />
 
