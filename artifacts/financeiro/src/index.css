@@ -85,6 +85,108 @@
   color: var(--text-secondary);
 }
 
+/* ── Text: completando shades faltantes ── */
+.dark-theme .text-slate-300,
+.dark-theme .text-slate-200,
+.dark-theme .text-slate-100 {
+  color: var(--text-muted) !important;
+}
+
+/* ── Texto colorido: muda para tons mais claros no dark mode ── */
+.dark-theme .text-blue-600,
+.dark-theme .text-blue-500,
+.dark-theme .text-blue-700 {
+  color: #60a5fa !important;
+}
+.dark-theme .text-indigo-600,
+.dark-theme .text-indigo-500 {
+  color: #818cf8 !important;
+}
+.dark-theme .text-emerald-600,
+.dark-theme .text-emerald-500,
+.dark-theme .text-emerald-700 {
+  color: #34d399 !important;
+}
+.dark-theme .text-rose-500,
+.dark-theme .text-rose-600,
+.dark-theme .text-rose-400 {
+  color: #fb7185 !important;
+}
+.dark-theme .text-amber-600,
+.dark-theme .text-amber-500,
+.dark-theme .text-amber-400 {
+  color: #fbbf24 !important;
+}
+.dark-theme .text-violet-600,
+.dark-theme .text-violet-500 {
+  color: #a78bfa !important;
+}
+.dark-theme .text-teal-600,
+.dark-theme .text-teal-500 {
+  color: #2dd4bf !important;
+}
+.dark-theme .text-cyan-500,
+.dark-theme .text-cyan-600 {
+  color: #22d3ee !important;
+}
+.dark-theme .text-purple-600,
+.dark-theme .text-purple-500 {
+  color: #c084fc !important;
+}
+.dark-theme .text-red-600,
+.dark-theme .text-red-700 {
+  color: #fb7185 !important;
+}
+
+/* ── Backgrounds coloridos: mais escuros no dark mode ── */
+.dark-theme .bg-blue-50,
+.dark-theme .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+.dark-theme .bg-indigo-50,
+.dark-theme .bg-indigo-100 {
+  background-color: rgba(99, 102, 241, 0.1) !important;
+}
+.dark-theme .bg-emerald-50,
+.dark-theme .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+.dark-theme .bg-rose-50,
+.dark-theme .bg-rose-100 {
+  background-color: rgba(244, 63, 94, 0.1) !important;
+}
+.dark-theme .bg-amber-50,
+.dark-theme .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+}
+.dark-theme .bg-violet-50,
+.dark-theme .bg-violet-100 {
+  background-color: rgba(139, 92, 246, 0.1) !important;
+}
+.dark-theme .bg-teal-50,
+.dark-theme .bg-teal-100 {
+  background-color: rgba(20, 184, 166, 0.1) !important;
+}
+.dark-theme .bg-cyan-50,
+.dark-theme .bg-cyan-100 {
+  background-color: rgba(6, 182, 212, 0.1) !important;
+}
+.dark-theme .bg-purple-50,
+.dark-theme .bg-purple-100 {
+  background-color: rgba(168, 85, 247, 0.1) !important;
+}
+.dark-theme .bg-red-50,
+.dark-theme .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* ── Borders coloridas ── */
+.dark-theme .border-blue-200 { border-color: rgba(59, 130, 246, 0.2) !important; }
+.dark-theme .border-emerald-200 { border-color: rgba(16, 185, 129, 0.2) !important; }
+.dark-theme .border-rose-200 { border-color: rgba(244, 63, 94, 0.2) !important; }
+.dark-theme .border-red-200 { border-color: rgba(239, 68, 68, 0.2) !important; }
+.dark-theme .border-amber-200 { border-color: rgba(245, 158, 11, 0.2) !important; }
+
 .dark-theme .bg-white {
   background-color: var(--bg-secondary) !important;
 }
