@@ -49,6 +49,72 @@ const CATEGORIA_CONFIG: Record<string, { color: string; bg: string; icon: string
   Outros:       { color: '#94A3B8', bg: '#F8FAFC', icon: '📦' },
 }
 
+const CNPJ_MAP: Record<string, string> = {
+  '42.320.627/0001-70': 'Trabalho',
+  '33.630.661/0001-50': 'Trabalho',
+  '66.467.049/0001-67': 'Trabalho',
+  '40.194.032/0001-90': 'Trabalho',
+  '38.035.834/0001-05': 'Serviços',
+  '34.882.109/0001-11': 'Serviços',
+  '65.828.286/0001-43': 'Serviços',
+  '66.541.252/0001-36': 'Serviços',
+  '65.769.415/0001-70': 'Serviços',
+  '66.769.090/0001-98': 'Serviços',
+  '11.480.809/0001-84': 'Serviços',
+  '64.217.668/0001-78': 'Serviços',
+  '66.460.185/0001-25': 'Serviços',
+  '65.862.132/0001-78': 'Serviços',
+  '65.854.387/0001-99': 'Serviços',
+  '37.462.514/0001-79': 'Serviços',
+  '66.419.583/0001-06': 'Serviços',
+  '20.876.245/0001-94': 'Serviços',
+  '52.639.845/0001-25': 'Lazer',
+  '61.349.217/0001-04': 'Lazer',
+  '58.547.271/0001-41': 'Lazer',
+  '53.570.592/0001-43': 'Lazer',
+  '66.664.153/0001-41': 'Doações',
+  '82.951.310/0001-56': 'Impostos',
+  '00.394.460/0058-87': 'Impostos',
+  '60.853.264/0001-10': 'Assinatura',
+  '19.468.242/0001-32': 'Saúde',
+}
+
+function extrairCNPJ(desc: string): string | null {
+  const m = desc.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/)
+  return m ? m[1] : null
+}
+
+function extrairEntidade(desc: string): string {
+  if (desc.includes('Aplicação RDB') || desc.includes('Resgate RDB')) return 'Nubank RDB'
+  if (desc.includes('Pagamento de fatura')) return 'Fatura Cartão'
+  if (desc.includes('Débito em conta')) return 'Taxa Bancária'
+  if (desc.includes('Pagamento de boleto')) {
+    const parts = desc.split(' - ')
+    return parts.length > 1 ? parts[1].trim() : 'Boleto'
+  }
+  const parts = desc.split(' - ')
+  if (parts.length >= 2) return parts[1].trim()
+  if (desc.includes('Estorno')) {
+    const idx = desc.indexOf(' - ')
+    return idx > 0 ? desc.slice(idx + 3).split(' - ')[0].trim() : desc.slice(0, 40)
+  }
+  return desc.slice(0, 40)
+}
+
+function extrairTipoTransacao(desc: string): string {
+  if (desc.includes('Estorno')) return 'estorno'
+  if (desc.includes('Aplicação RDB')) return 'investimento'
+  if (desc.includes('Resgate RDB')) return 'resgate'
+  if (desc.includes('Pagamento de boleto')) return 'boleto'
+  if (desc.includes('Pagamento de fatura')) return 'fatura'
+  if (desc.includes('Débito em conta')) return 'débito automático'
+  if (desc.includes('Transferência recebida pelo Pix')) return 'pix'
+  if (desc.includes('Transferência Recebida')) return 'ted'
+  if (desc.includes('Transferência enviada pelo Pix')) return 'pix'
+  if (desc.includes('Transferência enviada')) return 'ted'
+  return 'outro'
+}
+
 const CATEGORIAS = Object.keys(CATEGORIA_CONFIG)
 
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -101,27 +167,50 @@ export default function ExtratosBancarios() {
 
   function categorizar(descricao: string, valor: number): string {
     const t = descricao.toLowerCase()
+    const cnpj = extrairCNPJ(descricao)
+
+    // 1. CNPJ map (most reliable)
+    if (cnpj && CNPJ_MAP[cnpj]) return CNPJ_MAP[cnpj]
+
+    // 2. Keyword priorities (highest confidence first)
     if (t.includes('aplicacao rdb') || t.includes('resgate rdb')) return 'Investimento'
     if (t.includes('pagamento de fatura')) return 'Cartão'
-    if (t.includes('debito em conta')) return 'Tarifas'
-    if (t.includes('receita federal')) return 'Impostos'
-    if (t.includes('celesc') || t.includes('edificio isadora') || t.includes('edificio') || t.includes('condominio')) return 'Moradia'
-    if (t.includes('exame contabilidade') || t.includes('ene lab') || t.includes('j e c v technology') || t.includes('quantum tech') || t.includes('unipay') || t.includes('fator growth') || t.includes('infinity growth') || t.includes('vaultx') || t.includes('transfeto') || t.includes('ad conveniados') || t.includes('pag agente') || t.includes('go tecnologia') || t.includes('movetech') || t.includes('jump facilitadora') || t.includes('aeroz')) return 'Serviços'
-    if (t.includes('bolao do milhao') || t.includes('eb intermediacoes') || t.includes('ea entretenimento') || t.includes('ganha sorte') || t.includes('just pagamentos')) return 'Lazer'
+    if (t.includes('receita federal') || t.includes('imposto de renda') || t.includes('darf')) return 'Impostos'
+    if (t.includes('debito em conta') || t.includes('taxa bancaria') || t.includes('tarifa')) return 'Tarifas'
     if (t.includes('projeto amor') || t.includes('projeto empatia')) return 'Doações'
-    if (t.includes('seguro pag')) return 'Trabalho'
-    if (t.includes('control digital solutions')) return 'Trabalho'
-    if (t.includes('gowd instituicao') || t.includes('stark bank')) return 'Trabalho'
-    if (t.includes('pix') && (t.includes('recebida') || t.includes('Recebida')) && valor > 0 && !t.includes('control digital')) return 'Pessoal'
+    if (t.includes('seguro pag') || t.includes('control digital solutions') || t.includes('gowd instituicao') || t.includes('stark bank')) return 'Trabalho'
+
+    // 3. Company-name matching (extract from " - COMPANY - CNPJ" format)
+    const entidade = extrairEntidade(descricao)
+    const entidadeLower = entidade.toLowerCase()
+    if (entidadeLower.includes('ene lab') || entidadeLower.includes('j e c v technology') ||
+        entidadeLower.includes('quantum tech') || entidadeLower.includes('unipay') ||
+        entidadeLower.includes('fator growth') || entidadeLower.includes('infinity growth') ||
+        entidadeLower.includes('vaultx') || entidadeLower.includes('transfeto') ||
+        entidadeLower.includes('ad conveniados') || entidadeLower.includes('pag agente') ||
+        entidadeLower.includes('go tecnologia') || entidadeLower.includes('movetech') ||
+        entidadeLower.includes('jump facilitadora') || entidadeLower.includes('aeroz') ||
+        entidadeLower.includes('exame contabilidade') || entidadeLower.includes('j e c v')) return 'Serviços'
+    if (entidadeLower.includes('bolao do milhao') || entidadeLower.includes('eb intermediacoes') ||
+        entidadeLower.includes('ea entretenimento') || entidadeLower.includes('ganha sorte') ||
+        entidadeLower.includes('just pagamentos')) return 'Lazer'
+    if (entidadeLower.includes('celesc') || entidadeLower.includes('edificio') ||
+        entidadeLower.includes('condominio') || entidadeLower.includes('residencial')) return 'Moradia'
+
+    // 4. Boleto → extract company
     if (t.includes('pagamento de boleto')) {
-      if (t.includes('exame contabilidade')) return 'Serviços'
-      if (t.includes('celesc')) return 'Moradia'
-      if (t.includes('residencial mh')) return 'Moradia'
+      if (entidadeLower.includes('celesc') || entidadeLower.includes('residencial')) return 'Moradia'
       return 'Serviços'
     }
+
+    // 5. Learned rules from extratos_regras
     for (const [termo, cat] of Object.entries(regras)) {
       if (t.includes(termo)) return cat
     }
+
+    // 6. Pix received (positive) → personal income (unless already matched)
+    if (t.includes('pix') && t.includes('recebida') && valor > 0) return 'Pessoal'
+
     return 'Outros'
   }
 
@@ -283,6 +372,33 @@ export default function ExtratosBancarios() {
   const credRanking = Object.entries(creditosAgrupados).sort((a, b) => b[1] - a[1])
   const maxCred = credRanking.length > 0 ? Math.max(...credRanking.map(c => c[1])) : 0
 
+  // Entity-based rankings (company/person grouping)
+  const entidadesCreditos = extratosFiltrados.filter(e => e.tipo === 'credito').reduce<Record<string, number>>((acc, e) => {
+    const ent = extrairEntidade(e.descricao)
+    acc[ent] = (acc[ent] || 0) + e.valor
+    return acc
+  }, {})
+  const entRankingCred = Object.entries(entidadesCreditos).sort((a, b) => b[1] - a[1])
+  const maxEntCred = entRankingCred.length > 0 ? Math.max(...entRankingCred.map(c => c[1])) : 0
+
+  const entidadesDebitos = extratosFiltrados.filter(e => e.tipo === 'debito').reduce<Record<string, number>>((acc, e) => {
+    const ent = extrairEntidade(e.descricao)
+    acc[ent] = (acc[ent] || 0) + Math.abs(e.valor)
+    return acc
+  }, {})
+  const entRankingDeb = Object.entries(entidadesDebitos).sort((a, b) => b[1] - a[1])
+  const maxEntDeb = entRankingDeb.length > 0 ? Math.max(...entRankingDeb.map(c => c[1])) : 0
+
+  // Transaction type breakdown
+  const tipoTransacao = extratosFiltrados.reduce<Record<string, { count: number; valor: number }>>((acc, e) => {
+    const tipo = extrairTipoTransacao(e.descricao)
+    if (!acc[tipo]) acc[tipo] = { count: 0, valor: 0 }
+    acc[tipo].count++
+    acc[tipo].valor += e.tipo === 'credito' ? e.valor : Math.abs(e.valor)
+    return acc
+  }, {})
+  const tipoRanking = Object.entries(tipoTransacao).sort((a, b) => b[1].valor - a[1].valor)
+
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 
@@ -397,71 +513,186 @@ export default function ExtratosBancarios() {
         </div>
       </div>
 
-      {/* Ranking Receitas */}
+      {/* Dashboard: Análise de Receitas */}
       {credRanking.length > 0 && (
-        <div className="rounded-2xl border p-5 space-y-3" style={{
-          backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
-        }}>
-          <div className="flex items-center gap-2">
-            <TrendingUp size={14} style={{ color: 'var(--text-muted)' }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>De onde veio o dinheiro</span>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Por Categoria */}
+          <div className="rounded-2xl border p-5 space-y-3" style={{
+            backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
+          }}>
+            <div className="flex items-center gap-2">
+              <TrendingUp size={14} style={{ color: '#059669' }} />
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Receitas por Categoria</span>
+            </div>
+            <div className="space-y-2">
+              {credRanking.map(([cat, valor]) => {
+                const cfg = CATEGORIA_CONFIG[cat] || CATEGORIA_CONFIG['Outros']
+                const pct = maxCred > 0 ? (valor / maxCred) * 100 : 0
+                return (
+                  <div key={cat} className="flex items-center gap-3 p-2 rounded-xl transition-colors hover:bg-slate-50"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setCatFiltro(catFiltro === cat ? '' : cat)}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs" style={{ backgroundColor: cfg.bg }}>
+                      {cfg.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{cat}</span>
+                        <span className="text-xs font-black text-emerald-600">{fmt(valor)}</span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: '#059669' }} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {credRanking.map(([cat, valor]) => {
-              const cfg = CATEGORIA_CONFIG[cat] || CATEGORIA_CONFIG['Outros']
-              const pct = maxCred > 0 ? (valor / maxCred) * 100 : 0
-              return (
-                <div key={cat} className="flex items-center gap-3 p-2 rounded-xl transition-colors hover:bg-slate-50"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => setCatFiltro(catFiltro === cat ? '' : cat)}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs" style={{ backgroundColor: cfg.bg }}>
-                    {cfg.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{cat}</span>
-                      <span className="text-xs font-black text-emerald-600">{fmt(valor)}</span>
+
+          {/* Por Entidade */}
+          <div className="rounded-2xl border p-5 space-y-3" style={{
+            backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
+          }}>
+            <div className="flex items-center gap-2">
+              <Sparkles size={14} style={{ color: '#059669' }} />
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Quem te pagou</span>
+            </div>
+            <div className="space-y-2">
+              {entRankingCred.slice(0, 8).map(([ent, valor]) => {
+                const pct = maxEntCred > 0 ? (valor / maxEntCred) * 100 : 0
+                const count = extratosFiltrados.filter(e => e.tipo === 'credito' && extrairEntidade(e.descricao) === ent).length
+                return (
+                  <div key={ent} className="flex items-center gap-3 p-2 rounded-xl transition-colors hover:bg-slate-50">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black text-white" style={{ backgroundColor: '#059669' }}>
+                      {ent.slice(0, 2).toUpperCase()}
                     </div>
-                    <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: '#059669' }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>{ent}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{count}x</span>
+                          <span className="text-xs font-black text-emerald-600">{fmt(valor)}</span>
+                        </div>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: '#059669' }} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Ranking Despesas */}
+      {/* Dashboard: Análise de Despesas */}
       {catRanking.length > 0 && (
-        <div className="rounded-2xl border p-5 space-y-3" style={{
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Por Categoria */}
+          <div className="rounded-2xl border p-5 space-y-3" style={{
+            backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
+          }}>
+            <div className="flex items-center gap-2">
+              <BarChart3 size={14} style={{ color: 'var(--text-muted)' }} />
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Despesas por Categoria</span>
+            </div>
+            <div className="space-y-2">
+              {catRanking.map(([cat, valor]) => {
+                const cfg = CATEGORIA_CONFIG[cat] || CATEGORIA_CONFIG['Outros']
+                const pct = maxCat > 0 ? (valor / maxCat) * 100 : 0
+                return (
+                  <div key={cat} className="flex items-center gap-3 p-2 rounded-xl transition-colors hover:bg-slate-50"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setCatFiltro(catFiltro === cat ? '' : cat)}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs" style={{ backgroundColor: cfg.bg }}>
+                      {cfg.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{cat}</span>
+                        <span className="text-xs font-black" style={{ color: cfg.color }}>{fmt(valor)}</span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: cfg.color }} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Para quem paga */}
+          <div className="rounded-2xl border p-5 space-y-3" style={{
+            backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
+          }}>
+            <div className="flex items-center gap-2">
+              <DollarSign size={14} style={{ color: 'var(--text-muted)' }} />
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Para quem você paga</span>
+            </div>
+            <div className="space-y-2">
+              {entRankingDeb.slice(0, 8).map(([ent, valor]) => {
+                const pct = maxEntDeb > 0 ? (valor / maxEntDeb) * 100 : 0
+                const count = extratosFiltrados.filter(e => e.tipo === 'debito' && extrairEntidade(e.descricao) === ent).length
+                const cat = categorizar(ent, valor)
+                const cfg = CATEGORIA_CONFIG[cat] || CATEGORIA_CONFIG['Outros']
+                return (
+                  <div key={ent} className="flex items-center gap-3 p-2 rounded-xl transition-colors hover:bg-slate-50">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black text-white" style={{ backgroundColor: cfg.color }}>
+                      {cfg.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>{ent}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{count}x</span>
+                          <span className="text-xs font-black" style={{ color: cfg.color }}>{fmt(valor)}</span>
+                        </div>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: cfg.color }} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tipos de Transação */}
+      {tipoRanking.length > 0 && (
+        <div className="rounded-2xl border p-5" style={{
           backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)'
         }}>
-          <div className="flex items-center gap-2">
-            <BarChart3 size={14} style={{ color: 'var(--text-muted)' }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Para onde foi o dinheiro</span>
+          <div className="flex items-center gap-2 mb-3">
+            <PieChart size={14} style={{ color: 'var(--text-muted)' }} />
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Tipos de Transação</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {catRanking.map(([cat, valor]) => {
-              const cfg = CATEGORIA_CONFIG[cat] || CATEGORIA_CONFIG['Outros']
-              const pct = maxCat > 0 ? (valor / maxCat) * 100 : 0
+          <div className="flex flex-wrap gap-3">
+            {tipoRanking.map(([tipo, data]) => {
+              const labels: Record<string, string> = {
+                pix: 'Pix', ted: 'TED', boleto: 'Boleto', fatura: 'Fatura',
+                'débito automático': 'Débito', investimento: 'Aplicação',
+                resgate: 'Resgate', estorno: 'Estorno', outro: 'Outro'
+              }
+              const colors: Record<string, string> = {
+                pix: '#059669', ted: '#2563EB', boleto: '#D97706', fatura: '#E11D48',
+                'débito automático': '#64748B', investimento: '#0891B2',
+                resgate: '#0891B2', estorno: '#7C3AED', outro: '#94A3B8'
+              }
               return (
-                <div key={cat} className="flex items-center gap-3 p-2 rounded-xl transition-colors hover:bg-slate-50"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => setCatFiltro(catFiltro === cat ? '' : cat)}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs" style={{ backgroundColor: cfg.bg }}>
-                    {cfg.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{cat}</span>
-                      <span className="text-xs font-black" style={{ color: cfg.color }}>{fmt(valor)}</span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: cfg.color }} />
-                    </div>
-                  </div>
+                <div key={tipo} className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs" style={{
+                  borderColor: colors[tipo] + '40', backgroundColor: colors[tipo] + '10'
+                }}>
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[tipo] }} />
+                  <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{labels[tipo] || tipo}</span>
+                  <span className="font-black" style={{ color: colors[tipo] }}>{data.count}x</span>
+                  <span style={{ color: 'var(--text-muted)' }}>·</span>
+                  <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{fmt(data.valor)}</span>
                 </div>
               )
             })}
