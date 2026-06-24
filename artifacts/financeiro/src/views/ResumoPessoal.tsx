@@ -27,6 +27,7 @@ function fmtBRL(v: number) {
 
 function mesAtualYM() {
   const d = new Date();
+  d.setMonth(d.getMonth() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 

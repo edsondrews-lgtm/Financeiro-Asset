@@ -130,6 +130,7 @@ export default function SaidasPainel() {
   const [loading, setLoading] = useState(false);
   const [mesFiltro, setMesFiltro] = useState(() => {
     const hoje = new Date();
+    hoje.setMonth(hoje.getMonth() - 1);
     return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
   });
   const [modalCartaoAberto, setModalCartaoAberto] = useState(false);
