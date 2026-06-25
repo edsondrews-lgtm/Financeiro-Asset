@@ -28,12 +28,13 @@ interface Toast {
   msg: string;
 }
 
-const CASAS = ['Granawin', 'BetandYou', 'BetLabel'];
+const CASAS = ['Granawin', 'BetandYou', 'BetLabel', 'WinWin'];
 
 const CASA_CFG: Record<string, { bg: string; text: string; accent: string; border: string }> = {
   'Granawin':  { bg: 'bg-emerald-600', text: 'text-white', accent: '#059669', border: 'border-emerald-200' },
   'BetandYou': { bg: 'bg-blue-600',    text: 'text-white', accent: '#2563EB', border: 'border-blue-200'    },
   'BetLabel':  { bg: 'bg-violet-600',  text: 'text-white', accent: '#7c3aed', border: 'border-violet-200'  },
+  'WinWin':    { bg: 'bg-orange-600',  text: 'text-white', accent: '#EA580C', border: 'border-orange-200'  },
 };
 
 const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
