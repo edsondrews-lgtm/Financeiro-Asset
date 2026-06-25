@@ -220,14 +220,21 @@ export default function ApostasPainel() {
 
   // evolução mensal
   const evolucaoMensal = (() => {
-    const meses: { mes: string; depositos: number; saques: number; resultado: number }[] = [];
-    for (let i = 11; i >= 0; i--) {
-      const ym  = navegarMes(mesAtualYM(), -i);
-      const dep = lancamentos.filter(l => l.data.startsWith(ym) && l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
-      const saq = lancamentos.filter(l => l.data.startsWith(ym) && l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
-      meses.push({ mes: labelMesYM(ym), depositos: dep, saques: saq, resultado: saq - dep });
+    const agrupado: Record<string, { depositos: number; saques: number }> = {};
+    for (const l of lancamentos) {
+      const parts = l.data.split('-');
+      const ym = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : l.data.slice(0, 7);
+      if (!agrupado[ym]) agrupado[ym] = { depositos: 0, saques: 0 };
+      if (l.tipo === 'DEPOSITO') agrupado[ym].depositos += Number(l.valor);
+      else agrupado[ym].saques += Number(l.valor);
     }
-    return meses;
+    const chaves = Object.keys(agrupado).sort();
+    return chaves.map(ym => ({
+      mes: labelMesYM(ym),
+      depositos: agrupado[ym].depositos,
+      saques: agrupado[ym].saques,
+      resultado: agrupado[ym].saques - agrupado[ym].depositos,
+    }));
   })();
 
   // lista filtrada
