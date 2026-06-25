@@ -285,7 +285,9 @@ export default function TipsterPainel() {
 
                 {aposta.tipo === "bonus"
                   ? <span className="text-xs px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>Bonus</span>
-                  : <span className="text-xs px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>{aposta.stake_unidades}u</span>
+                  : <span className="text-xs px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+                      {aposta.stake_unidades}u · {fmtBRL(((aposta.stake_unidades ?? 1) / 100) * (aposta.banca_momento ?? BANCA_INICIAL))}
+                    </span>
                 }
 
                 <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-primary)' }}>{label}</span>
@@ -307,14 +309,16 @@ export default function TipsterPainel() {
 
                   <div className="flex flex-wrap gap-4 text-xs" style={{ color: 'var(--text-muted)' }}>
                     {aposta.tipo === "simples" && <>
-                      <span>Stake: <span style={{ color: 'var(--text-primary)' }}>{aposta.stake_unidades}u</span></span>
-                      <span>Banca: <span style={{ color: 'var(--text-primary)' }}>{fmtBRL(aposta.banca_momento ?? 0)}</span></span>
-                      <span>Valor: <span style={{ color: 'var(--text-primary)' }}>{fmtBRL(((aposta.stake_unidades ?? 1) / 100) * (aposta.banca_momento ?? BANCA_INICIAL))}</span></span>
+                      <span>Stake: <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{aposta.stake_unidades}u</span></span>
+                      <span>Banca: <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{fmtBRL(aposta.banca_momento ?? 0)}</span></span>
+                      <span className="px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
+                        Valor apostado: <span className="font-bold">{fmtBRL(((aposta.stake_unidades ?? 1) / 100) * (aposta.banca_momento ?? BANCA_INICIAL))}</span>
+                      </span>
                     </>}
                     {aposta.tipo === "bonus" && <>
-                      <span>Deposito: <span style={{ color: 'var(--text-primary)' }}>{fmtBRL(aposta.valor_bonus ?? 0)}</span></span>
-                      <span>Lucro max: <span style={{ color: 'var(--text-primary)' }}>{fmtBRL(aposta.lucro_maximo ?? 0)}</span></span>
-                      <span style={{ color: '#D97706' }}>Bonus — perda nao conta</span>
+                      <span>Deposito: <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{fmtBRL(aposta.valor_bonus ?? 0)}</span></span>
+                      <span>Lucro max: <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{fmtBRL(aposta.lucro_maximo ?? 0)}</span></span>
+                      <span className="px-2 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>Bonus — perda nao conta</span>
                     </>}
                     {aposta.observacao && <span>Obs: <span style={{ color: 'var(--text-primary)' }}>{aposta.observacao}</span></span>}
                   </div>
