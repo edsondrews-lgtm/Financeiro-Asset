@@ -117,16 +117,23 @@ export default function TipsterPainel() {
   }
 
   const dadosGrafico = (() => {
+    if (simples.length === 0) return [];
+    const datas = simples.map(a => a.data).sort();
+    const primeiraData = datas[0];
     const porData: Record<string, number> = {};
     resolvidasSimples.forEach(a => {
-      const d = fmtData(a.data);
+      const d = a.data;
       porData[d] = (porData[d] ?? 0) + calcularLucro(a);
     });
+    const resultado: { data: string; banca: number }[] = [];
     let acum = BANCA_INICIAL;
-    return Object.entries(porData).map(([data, lucro]) => {
-      acum += lucro;
-      return { data, banca: parseFloat(acum.toFixed(2)) };
-    });
+    resultado.push({ data: fmtData(primeiraData), banca: acum });
+    const datasUnicas = Object.keys(porData).sort();
+    for (const d of datasUnicas) {
+      acum += porData[d];
+      resultado.push({ data: fmtData(d), banca: parseFloat(acum.toFixed(2)) });
+    }
+    return resultado;
   })();
 
   const bonus = apostas.filter(a => a.tipo === "bonus");
