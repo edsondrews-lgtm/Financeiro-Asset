@@ -30,11 +30,11 @@ interface Toast {
 
 const CASAS = ['Granawin', 'BetandYou', 'BetLabel', 'WinWin'];
 
-const CASA_CFG: Record<string, { bg: string; text: string; accent: string; border: string }> = {
-  'Granawin':  { bg: 'bg-emerald-600', text: 'text-white', accent: '#059669', border: 'border-emerald-200' },
-  'BetandYou': { bg: 'bg-blue-600',    text: 'text-white', accent: '#2563EB', border: 'border-blue-200'    },
-  'BetLabel':  { bg: 'bg-violet-600',  text: 'text-white', accent: '#7c3aed', border: 'border-violet-200'  },
-  'WinWin':    { bg: 'bg-orange-600',  text: 'text-white', accent: '#EA580C', border: 'border-orange-200'  },
+const CASA_CFG: Record<string, { bg: string; text: string; accent: string; border: string; highlight: string }> = {
+  'Granawin':  { bg: 'bg-emerald-600', text: 'text-white', accent: '#059669', border: 'border-emerald-200', highlight: '#05966915' },
+  'BetandYou': { bg: 'bg-blue-600',    text: 'text-white', accent: '#2563EB', border: 'border-blue-200',    highlight: '#2563EB15' },
+  'BetLabel':  { bg: 'bg-violet-600',  text: 'text-white', accent: '#7c3aed', border: 'border-violet-200',  highlight: '#7c3aed15' },
+  'WinWin':    { bg: 'bg-orange-600',  text: 'text-white', accent: '#EA580C', border: 'border-orange-200',  highlight: '#EA580C15' },
 };
 
 const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -258,7 +258,15 @@ export default function ApostasPainel() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Apostas</h1>
-              <p className="text-[10px] sm:text-xs font-semibold mt-0.5" style={{ color: 'var(--text-muted)' }}>Granawin · BetandYou · BetLabel · controle de depósitos e saques</p>
+              <p className="text-[10px] sm:text-xs font-semibold mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                {CASAS.map((c, i) => (
+                  <React.Fragment key={c}>
+                    {i > 0 && <span>·</span>}
+                    <span className="px-1.5 py-0.5 rounded" style={{ color: CASA_CFG[c].accent, backgroundColor: CASA_CFG[c].highlight }}>{c}</span>
+                  </React.Fragment>
+                ))}
+                <span className="ml-1">· controle de depósitos e saques</span>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start">
@@ -372,7 +380,7 @@ export default function ApostasPainel() {
                       <div className="h-1" style={{ backgroundColor: cfg.accent }}/>
                       <div className="p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{s.casa}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md" style={{ color: cfg.accent, backgroundColor: cfg.highlight }}>{s.casa}</span>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${positivo ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
                             {positivo ? '▲ Lucro' : '▼ Prejuízo'}
                           </span>
@@ -477,7 +485,9 @@ export default function ApostasPainel() {
                   <button key={c} onClick={() => setCasaFiltro(c)}
                     className="px-3 py-1 rounded-full text-[10px] font-bold border transition-all"
                     style={casaFiltro === c
-                      ? { backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }
+                      ? (c === 'TODAS'
+                        ? { backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }
+                        : { backgroundColor: CASA_CFG[c]?.highlight ?? 'var(--bg-elevated)', color: CASA_CFG[c]?.accent ?? 'var(--text-primary)', borderColor: CASA_CFG[c]?.accent ?? 'var(--border-color)' })
                       : { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', borderColor: 'var(--border-color)' }
                     }>
                     {c === 'TODAS' ? 'Todas as casas' : c}
@@ -529,7 +539,7 @@ export default function ApostasPainel() {
                         <tr key={l.id} className="transition-colors group/row" style={{ borderBottom: '1px solid var(--border-light)' }}>
                           <td className="py-3 text-[11px] font-medium pr-3" style={{ color: 'var(--text-muted)' }}>{fmtData(l.data)}</td>
                           <td className="py-3 pr-3">
-                            <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold text-white ${CASA_CFG[l.casa]?.bg ?? 'bg-slate-500'}`}>
+                            <span className="inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold" style={{ color: CASA_CFG[l.casa]?.accent ?? '#64748b', backgroundColor: CASA_CFG[l.casa]?.highlight ?? '#64748b15' }}>
                               {l.casa}
                             </span>
                           </td>
