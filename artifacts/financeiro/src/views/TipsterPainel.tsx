@@ -7,7 +7,7 @@ import {
 
 type Resultado = "pendente" | "green" | "red" | "void";
 type Tipo = "simples" | "bonus";
-type Aba = "resumo" | "simples" | "duplas" | "triplas" | "combinadas" | "bonus";
+type Aba = "resumo" | "simples" | "duplas" | "triplas" | "combinadas" | "bonus" | "programacao";
 
 interface Detalhe {
   id: string;
@@ -38,6 +38,22 @@ interface Aposta {
 }
 
 const BANCA_INICIAL = 1000;
+
+const CASAS = ['Granawin', 'BetandYou', 'BetLabel', 'WinWin', '22Bet', 'BetSnipe', 'BET&YOU'];
+const DIAS_SEMANA = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
+const DIAS_LABEL: Record<string, string> = {
+  segunda: "Seg", terca: "Ter", quarta: "Qua", quinta: "Qui",
+  sexta: "Sex", sabado: "Sab", domingo: "Dom",
+};
+
+interface Programacao {
+  id: string;
+  casa: string;
+  dia_semana: string;
+  valor: number;
+  observacao: string | null;
+  created_at: string;
+}
 
 function calcularLucro(a: Aposta, bancaBase?: number): number {
   if (a.resultado === "pendente" || a.resultado === "void") return 0;
@@ -86,6 +102,10 @@ export default function TipsterPainel() {
   const [modalRelatorio, setModalRelatorio] = useState(false);
   const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
   const [textoRelatorio, setTextoRelatorio] = useState("");
+  const [programacao, setProgramacao] = useState<Programacao[]>([]);
+  const [modalProgramacao, setModalProgramacao] = useState(false);
+  const [editProgramacao, setEditProgramacao] = useState<Programacao | null>(null);
+  const [formProg, setFormProg] = useState({ casa: CASAS[0], dia_semana: DIAS_SEMANA[0], valor: "", observacao: "" });
   const bancaMomentoRef = useRef<Record<string, number>>({});
 
   async function carregar() {
@@ -97,12 +117,14 @@ export default function TipsterPainel() {
       .order("created_at", { ascending: true });
 
     const { data: det } = await supabase.from("tipster_apostas_detalhes").select("*");
+    const { data: prog } = await supabase.from("tipster_programacao").select("*").order("dia_semana");
 
     const com = (ap ?? []).map((a: Aposta) => ({
       ...a,
       detalhes: (det ?? []).filter((d: Detalhe) => d.aposta_id === a.id),
     }));
     setApostas(com);
+    setProgramacao((prog ?? []) as Programacao[]);
     setLoading(false);
   }
 
@@ -120,6 +142,36 @@ export default function TipsterPainel() {
       .eq("id", editando.id);
     setSalvando(false);
     setEditando(null);
+    carregar();
+  }
+
+  // ── CRUD Programação ──
+  function abrirNovaProgramacao() {
+    setEditProgramacao(null);
+    setFormProg({ casa: CASAS[0], dia_semana: DIAS_SEMANA[0], valor: "", observacao: "" });
+    setModalProgramacao(true);
+  }
+
+  function abrirEditarProgramacao(p: Programacao) {
+    setEditProgramacao(p);
+    setFormProg({ casa: p.casa, dia_semana: p.dia_semana, valor: String(p.valor), observacao: p.observacao ?? "" });
+    setModalProgramacao(true);
+  }
+
+  async function salvarProgramacao() {
+    if (!formProg.valor) return;
+    const payload = { casa: formProg.casa, dia_semana: formProg.dia_semana, valor: parseFloat(formProg.valor), observacao: formProg.observacao || null };
+    if (editProgramacao) {
+      await supabase.from("tipster_programacao").update(payload).eq("id", editProgramacao.id);
+    } else {
+      await supabase.from("tipster_programacao").insert(payload);
+    }
+    setModalProgramacao(false);
+    carregar();
+  }
+
+  async function excluirProgramacao(id: string) {
+    await supabase.from("tipster_programacao").delete().eq("id", id);
     carregar();
   }
 
@@ -489,6 +541,7 @@ REGRAS:
           { key: "triplas",    label: `Triplas (${simplesTripla.length})` },
           { key: "combinadas", label: `Combinadas (${simplesCombinada.length})` },
           { key: "bonus",      label: `Bônus (${bonus.length})` },
+          { key: "programacao", label: `Programação` },
         ] as { key: Aba; label: string }[]).map(t => (
           <button key={t.key} onClick={() => setAba(t.key)} style={{
             padding: "10px 16px", fontSize: 13, fontWeight: 700, border: "none",
@@ -704,6 +757,129 @@ REGRAS:
               expandido={expandido} setExpandido={setExpandido}
               editando={editando} setEditando={setEditando} salvarResultado={salvarResultado} salvando={salvando} />
           ))}
+        </div>
+      )}
+
+      {/* ── ABA PROGRAMAÇÃO ── */}
+      {aba === "programacao" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: "var(--text-muted)", margin: 0 }}>
+              Programação semanal de bônus
+            </p>
+            <button onClick={abrirNovaProgramacao} style={{
+              padding: "7px 16px", fontSize: 12, borderRadius: 8, cursor: "pointer",
+              backgroundColor: "#3B82F6", color: "white", border: "none", fontWeight: 700
+            }}>
+              + Nova
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+            {DIAS_SEMANA.map(dia => {
+              const itens = programacao.filter(p => p.dia_semana === dia);
+              return (
+                <div key={dia} style={{
+                  borderRadius: 14, padding: "14px 12px",
+                  backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+                  minHeight: 100
+                }}>
+                  <p style={{
+                    fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5,
+                    color: itens.length > 0 ? "#3B82F6" : "var(--text-muted)", margin: "0 0 10px"
+                  }}>
+                    {DIAS_LABEL[dia]}
+                  </p>
+                  {itens.length === 0 && (
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>—</p>
+                  )}
+                  {itens.map(p => (
+                    <div key={p.id} style={{
+                      padding: "8px 10px", borderRadius: 8, marginBottom: 6,
+                      backgroundColor: "var(--bg-tertiary, #0F172A10)", border: "1px solid var(--border-color)",
+                      cursor: "pointer"
+                    }} onClick={() => abrirEditarProgramacao(p)}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{p.casa}</span>
+                        <span onClick={e => { e.stopPropagation(); excluirProgramacao(p.id); }} style={{
+                          fontSize: 11, color: "#F87171", cursor: "pointer", fontWeight: 700, padding: "0 2px"
+                        }}>X</span>
+                      </div>
+                      <p style={{ fontSize: 14, fontWeight: 800, color: "#10B981", margin: "4px 0 0" }}>
+                        {fmtBRL(p.valor)}
+                      </p>
+                      {p.observacao && (
+                        <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "4px 0 0" }}>{p.observacao}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL PROGRAMAÇÃO ── */}
+      {modalProgramacao && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", padding: 20
+        }} onClick={() => setModalProgramacao(false)}>
+          <div style={{
+            backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+            borderRadius: 18, width: "100%", maxWidth: 420, padding: "24px 28px"
+          }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: "0 0 20px" }}>
+              {editProgramacao ? "Editar Programação" : "Nova Programação"}
+            </h2>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1 }}>Casa</label>
+                <select value={formProg.casa} onChange={e => setFormProg(f => ({ ...f, casa: e.target.value }))}
+                  style={{ width: "100%", marginTop: 4, padding: "10px 12px", borderRadius: 10, backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border-color)", fontSize: 14, outline: "none" }}>
+                  {CASAS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1 }}>Dia da semana</label>
+                <select value={formProg.dia_semana} onChange={e => setFormProg(f => ({ ...f, dia_semana: e.target.value }))}
+                  style={{ width: "100%", marginTop: 4, padding: "10px 12px", borderRadius: 10, backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border-color)", fontSize: 14, outline: "none" }}>
+                  {DIAS_SEMANA.map(d => <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1 }}>Valor (R$)</label>
+                <input type="number" value={formProg.valor} onChange={e => setFormProg(f => ({ ...f, valor: e.target.value }))}
+                  placeholder="0,00" style={{ width: "100%", marginTop: 4, padding: "10px 12px", borderRadius: 10, backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border-color)", fontSize: 14, outline: "none" }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1 }}>Observação (opcional)</label>
+                <input type="text" value={formProg.observacao} onChange={e => setFormProg(f => ({ ...f, observacao: e.target.value }))}
+                  placeholder="Ex: depósito mínimo..." style={{ width: "100%", marginTop: 4, padding: "10px 12px", borderRadius: 10, backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border-color)", fontSize: 14, outline: "none" }} />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }}>
+              <button onClick={() => setModalProgramacao(false)} style={{
+                padding: "10px 20px", borderRadius: 10, border: "1px solid var(--border-color)",
+                cursor: "pointer", backgroundColor: "transparent", color: "var(--text-muted)", fontSize: 13, fontWeight: 600
+              }}>
+                Cancelar
+              </button>
+              <button onClick={salvarProgramacao} style={{
+                padding: "10px 20px", borderRadius: 10, border: "none",
+                cursor: "pointer", backgroundColor: "#3B82F6", color: "white", fontSize: 13, fontWeight: 700
+              }}>
+                {editProgramacao ? "Salvar" : "Adicionar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
