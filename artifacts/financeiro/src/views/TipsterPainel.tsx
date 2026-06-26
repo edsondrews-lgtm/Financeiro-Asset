@@ -83,6 +83,9 @@ export default function TipsterPainel() {
   const [expandido, setExpandido] = useState<string | null>(null);
   const [editando, setEditando] = useState<{ id: string; resultado: Resultado } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [modalRelatorio, setModalRelatorio] = useState(false);
+  const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
+  const [textoRelatorio, setTextoRelatorio] = useState("");
   const bancaMomentoRef = useRef<Record<string, number>>({});
 
   async function carregar() {
@@ -243,6 +246,117 @@ export default function TipsterPainel() {
   const listaBonus = [...bonus].reverse();
   const isLucroPos = bancaAtual >= BANCA_INICIAL;
 
+  // ── Gerar relatório Gemini ──
+  async function gerarRelatorio() {
+    setGerandoRelatorio(true);
+    setTextoRelatorio("");
+    setModalRelatorio(true);
+
+    const dadosParaAPI = {
+      dataInicio: simplesOrdenadas[0]?.data ?? null,
+      dataAtual: new Date().toISOString().split("T")[0],
+      bancaInicial: BANCA_INICIAL,
+      bancaAtual,
+      yieldPct: yieldPct.toFixed(2),
+      roiUnidades: roiUnidades.toFixed(1),
+      totalApostas: apostas.length,
+      totalSimples: simples.length,
+      resolvidasSimples: resolvidasSimples.length,
+      greens: greens.length,
+      reds: reds.length,
+      pendentes: pendentes.length,
+      taxaAcerto: taxaAcerto.toFixed(1),
+      oddMedia: oddMedia.toFixed(2),
+      melhorSequencia: melhorSeq,
+      sequenciaAtual: sequencia,
+      tipoSequenciaAtual: tipoSeq,
+      maxDrawdown: maxDrawdown.toFixed(1),
+      totalBonus: bonus.length,
+      greenBonus,
+      redBonus,
+      pendBonus,
+      lucroBonus: lucroBonus.toFixed(2),
+      casasBonus: [...new Set(bonus.map(a => a.casa_aposta))],
+      lucroPorCasa: topCasas.map(([casa, d]) => ({
+        casa, lucro: d.lucro.toFixed(2), apostas: d.count, greens: d.greens,
+        acerto: d.count > 0 ? ((d.greens / d.count) * 100).toFixed(1) : "0"
+      })),
+      distribuicaoPorTipo: {
+        simples: simplesUm.length,
+        duplas: simplesDupla.length,
+        triplas: simplesTripla.length,
+        combinadas: simplesCombinada.length,
+      }
+    };
+
+    const prompt = `Você é um analista especializado em apostas esportivas.
+Gere um relatório narrativo profissional em português brasileiro
+sobre o desempenho do tipster Master com base nos dados abaixo.
+
+DADOS:
+${JSON.stringify(dadosParaAPI, null, 2)}
+
+ESTRUTURA (blocos separados por linha em branco):
+
+INÍCIO DO ACOMPANHAMENTO: Quando foi iniciado, banca inicial,
+período coberto até hoje.
+
+DESEMPENHO GERAL: Total de apostas, taxa de acerto, yield%,
+ROI em unidades, lucro na banca. Tom analítico e preciso.
+
+GESTÃO DE RISCO: Drawdown máximo e o que significa, sequência
+atual, melhor sequência histórica. Se a banca está segura.
+
+BÔNUS CAPTURADOS: Quantos tentados, em quais casas, convertidos
+vs perdidos, valor capturado. Explicar que bônus perdido não é
+perda real pois o capital é da casa.
+
+PERFORMANCE POR CASA: Qual casa performou melhor, acerto e
+lucro por casa.
+
+DISTRIBUIÇÃO DE APOSTAS: Quantas simples, duplas, triplas,
+combinadas. Comentar estratégia do tipster.
+
+CONCLUSÃO: Avaliação geral. Se vale continuar seguindo,
+pontos de atenção, perspectivas para os próximos períodos.
+
+REGRAS:
+- Sem asteriscos, sem markdown, texto corrido com parágrafos
+- Cada bloco começa com título em MAIÚSCULAS seguido de dois pontos
+- Use os números reais dos dados
+- Se dataInicio for null, dizer que o histórico está sendo construído
+- Tom profissional mas acessível, como comentarista esportivo analítico`;
+
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        setTextoRelatorio("Chave da API Gemini nao configurada. Adicione VITE_GEMINI_API_KEY no arquivo .env e reinicie o servidor.");
+        setGerandoRelatorio(false);
+        return;
+      }
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        }
+      );
+
+      if (!res.ok) throw new Error(`Erro HTTP ${res.status}`);
+
+      const data = await res.json();
+      const texto = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      setTextoRelatorio(texto || "Nenhum texto retornado pela API.");
+    } catch (err) {
+      console.error(err);
+      setTextoRelatorio("Nao foi possivel gerar o relatorio. Verifique sua chave Gemini no arquivo .env (VITE_GEMINI_API_KEY) e tente novamente.");
+    } finally {
+      setGerandoRelatorio(false);
+    }
+  }
+
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300 }}>
       <div style={{ textAlign: "center" }}>
@@ -375,13 +489,22 @@ export default function TipsterPainel() {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button onClick={carregar} style={{
-          padding: "7px 16px", fontSize: 12, borderRadius: 8, cursor: "pointer",
-          backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)",
-          border: "1px solid var(--border-color)", alignSelf: "center", fontWeight: 600
-        }}>
-          ↻ Atualizar
-        </button>
+        <div style={{ display: "flex", gap: 8, alignSelf: "center" }}>
+          <button onClick={() => setModalRelatorio(true)} style={{
+            padding: "7px 16px", fontSize: 12, borderRadius: 8, cursor: "pointer",
+            backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)",
+            border: "1px solid var(--border-color)", fontWeight: 600
+          }}>
+            Gerar Relatorio
+          </button>
+          <button onClick={carregar} style={{
+            padding: "7px 16px", fontSize: 12, borderRadius: 8, cursor: "pointer",
+            backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)",
+            border: "1px solid var(--border-color)", fontWeight: 600
+          }}>
+            Atualizar
+          </button>
+        </div>
       </div>
 
       {/* ── ABA RESUMO ── */}
@@ -748,6 +871,89 @@ function CardAposta({ aposta, bancaMomentoCalc, expandido, setExpandido, editand
                 Editar
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL RELATÓRIO ── */}
+      {modalRelatorio && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          padding: 20
+        }} onClick={() => !gerandoRelatorio && setModalRelatorio(false)}>
+          <div style={{
+            backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+            borderRadius: 18, width: "100%", maxWidth: 700, maxHeight: "85vh",
+            display: "flex", flexDirection: "column", overflow: "hidden"
+          }} onClick={e => e.stopPropagation()}>
+            {/* Header do modal */}
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "20px 24px", borderBottom: "1px solid var(--border-color)"
+            }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
+                  Relatorio Master Tipster
+                </h2>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                  Gerado em {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
+                </p>
+              </div>
+              <button onClick={() => !gerandoRelatorio && setModalRelatorio(false)} style={{
+                background: "none", border: "none", cursor: "pointer", padding: 4,
+                color: "var(--text-muted)", fontSize: 20
+              }}>
+                X
+              </button>
+            </div>
+
+            {/* Conteudo */}
+            <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
+              {gerandoRelatorio ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60 }}>
+                  <div style={{
+                    width: 40, height: 40, border: "3px solid var(--border-color)",
+                    borderTopColor: "#3B82F6", borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite", marginBottom: 16
+                  }} />
+                  <p style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 600 }}>
+                    Gerando analise...
+                  </p>
+                </div>
+              ) : (
+                <div style={{
+                  fontSize: 14, lineHeight: 1.8, color: "var(--text-primary)",
+                  whiteSpace: "pre-wrap"
+                }}>
+                  {textoRelatorio}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              display: "flex", justifyContent: "flex-end", gap: 10,
+              padding: "16px 24px", borderTop: "1px solid var(--border-color)"
+            }}>
+              {textoRelatorio && !gerandoRelatorio && (
+                <button onClick={() => navigator.clipboard.writeText(textoRelatorio)} style={{
+                  padding: "10px 20px", borderRadius: 10, border: "1px solid var(--border-color)",
+                  cursor: "pointer", backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)",
+                  fontSize: 13, fontWeight: 700
+                }}>
+                  Copiar
+                </button>
+              )}
+              <button onClick={() => setModalRelatorio(false)} style={{
+                padding: "10px 20px", borderRadius: 10, border: "none",
+                cursor: "pointer", backgroundColor: "#3B82F6", color: "white",
+                fontSize: 13, fontWeight: 700
+              }}>
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
