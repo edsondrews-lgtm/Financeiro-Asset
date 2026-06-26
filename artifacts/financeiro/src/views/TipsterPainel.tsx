@@ -335,23 +335,35 @@ REGRAS:
         return;
       }
 
+      const body = {
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }]
+      };
+
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          body: JSON.stringify(body)
         }
       );
 
-      if (!res.ok) throw new Error(`Erro HTTP ${res.status}`);
-
       const data = await res.json();
+
+      if (!res.ok) {
+        const errorMsg = data?.error?.message || `Erro HTTP ${res.status}`;
+        throw new Error(errorMsg);
+      }
+
       const texto = data.candidates?.[0]?.content?.parts?.[0]?.text;
       setTextoRelatorio(texto || "Nenhum texto retornado pela API.");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setTextoRelatorio("Nao foi possivel gerar o relatorio. Verifique sua chave Gemini no arquivo .env (VITE_GEMINI_API_KEY) e tente novamente.");
+      setTextoRelatorio(`Erro ao gerar relatorio: ${err.message || "Verifique sua chave Gemini no .env"}`);
     } finally {
       setGerandoRelatorio(false);
     }
