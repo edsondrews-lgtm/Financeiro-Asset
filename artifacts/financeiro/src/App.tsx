@@ -316,7 +316,7 @@ export default function App() {
           {/* Total */}
           <div className="px-6 pt-6 pb-5 border-b border-white/5">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
-            <p className="text-5xl font-black tabular-nums text-white tracking-tight privado">{fmt(patrimonioTotal)}</p>
+            <p className="text-3xl sm:text-4xl md:text-5xl font-black tabular-nums text-white tracking-tight privado">{fmt(patrimonioTotal)}</p>
           </div>
           {/* Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
