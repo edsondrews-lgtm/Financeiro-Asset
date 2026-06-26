@@ -215,12 +215,14 @@ export default function TipsterPainel() {
   // ── Gráfico ──
   const dadosGrafico = (() => {
     if (simplesOrdenadas.length === 0) return [];
+    const primeiraData = simplesOrdenadas[0].data;
     const porData: Record<string, number> = {};
     resolvidasSimples.forEach(a => {
       porData[a.data] = (porData[a.data] ?? 0) + lucroCalc(a);
     });
     const resultado: { data: string; banca: number; lucro: number }[] = [];
     let acum = BANCA_INICIAL;
+    resultado.push({ data: fmtDataCurta(primeiraData), banca: acum, lucro: 0 });
     const datasUnicas = Object.keys(porData).sort();
     for (const d of datasUnicas) {
       const l = porData[d];
