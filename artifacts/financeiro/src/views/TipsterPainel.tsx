@@ -707,6 +707,84 @@ REGRAS:
         </div>
       )}
 
+      {/* ── MODAL RELATÓRIO ── */}
+      {modalRelatorio && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          padding: 20
+        }} onClick={() => !gerandoRelatorio && setModalRelatorio(false)}>
+          <div style={{
+            backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+            borderRadius: 18, width: "100%", maxWidth: 700, maxHeight: "85vh",
+            display: "flex", flexDirection: "column", overflow: "hidden"
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "20px 24px", borderBottom: "1px solid var(--border-color)"
+            }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
+                  Relatorio Master Tipster
+                </h2>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                  Gerado em {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
+                </p>
+              </div>
+              <button onClick={() => !gerandoRelatorio && setModalRelatorio(false)} style={{
+                background: "none", border: "none", cursor: "pointer", padding: 4,
+                color: "var(--text-muted)", fontSize: 20
+              }}>
+                X
+              </button>
+            </div>
+            <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
+              {gerandoRelatorio ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60 }}>
+                  <div style={{
+                    width: 40, height: 40, border: "3px solid var(--border-color)",
+                    borderTopColor: "#3B82F6", borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite", marginBottom: 16
+                  }} />
+                  <p style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 600 }}>
+                    Gerando analise...
+                  </p>
+                </div>
+              ) : (
+                <div style={{
+                  fontSize: 14, lineHeight: 1.8, color: "var(--text-primary)",
+                  whiteSpace: "pre-wrap"
+                }}>
+                  {textoRelatorio}
+                </div>
+              )}
+            </div>
+            <div style={{
+              display: "flex", justifyContent: "flex-end", gap: 10,
+              padding: "16px 24px", borderTop: "1px solid var(--border-color)"
+            }}>
+              {textoRelatorio && !gerandoRelatorio && (
+                <button onClick={() => navigator.clipboard.writeText(textoRelatorio)} style={{
+                  padding: "10px 20px", borderRadius: 10, border: "1px solid var(--border-color)",
+                  cursor: "pointer", backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)",
+                  fontSize: 13, fontWeight: 700
+                }}>
+                  Copiar
+                </button>
+              )}
+              <button onClick={() => setModalRelatorio(false)} style={{
+                padding: "10px 20px", borderRadius: 10, border: "none",
+                cursor: "pointer", backgroundColor: "#3B82F6", color: "white",
+                fontSize: 13, fontWeight: 700
+              }}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -883,89 +961,6 @@ function CardAposta({ aposta, bancaMomentoCalc, expandido, setExpandido, editand
                 Editar
               </button>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL RELATÓRIO ── */}
-      {modalRelatorio && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 1000,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-          padding: 20
-        }} onClick={() => !gerandoRelatorio && setModalRelatorio(false)}>
-          <div style={{
-            backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-color)",
-            borderRadius: 18, width: "100%", maxWidth: 700, maxHeight: "85vh",
-            display: "flex", flexDirection: "column", overflow: "hidden"
-          }} onClick={e => e.stopPropagation()}>
-            {/* Header do modal */}
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "20px 24px", borderBottom: "1px solid var(--border-color)"
-            }}>
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: 0 }}>
-                  Relatorio Master Tipster
-                </h2>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>
-                  Gerado em {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
-                </p>
-              </div>
-              <button onClick={() => !gerandoRelatorio && setModalRelatorio(false)} style={{
-                background: "none", border: "none", cursor: "pointer", padding: 4,
-                color: "var(--text-muted)", fontSize: 20
-              }}>
-                X
-              </button>
-            </div>
-
-            {/* Conteudo */}
-            <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
-              {gerandoRelatorio ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60 }}>
-                  <div style={{
-                    width: 40, height: 40, border: "3px solid var(--border-color)",
-                    borderTopColor: "#3B82F6", borderRadius: "50%",
-                    animation: "spin 0.8s linear infinite", marginBottom: 16
-                  }} />
-                  <p style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 600 }}>
-                    Gerando analise...
-                  </p>
-                </div>
-              ) : (
-                <div style={{
-                  fontSize: 14, lineHeight: 1.8, color: "var(--text-primary)",
-                  whiteSpace: "pre-wrap"
-                }}>
-                  {textoRelatorio}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div style={{
-              display: "flex", justifyContent: "flex-end", gap: 10,
-              padding: "16px 24px", borderTop: "1px solid var(--border-color)"
-            }}>
-              {textoRelatorio && !gerandoRelatorio && (
-                <button onClick={() => navigator.clipboard.writeText(textoRelatorio)} style={{
-                  padding: "10px 20px", borderRadius: 10, border: "1px solid var(--border-color)",
-                  cursor: "pointer", backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)",
-                  fontSize: 13, fontWeight: 700
-                }}>
-                  Copiar
-                </button>
-              )}
-              <button onClick={() => setModalRelatorio(false)} style={{
-                padding: "10px 20px", borderRadius: 10, border: "none",
-                cursor: "pointer", backgroundColor: "#3B82F6", color: "white",
-                fontSize: 13, fontWeight: 700
-              }}>
-                Fechar
-              </button>
-            </div>
           </div>
         </div>
       )}
