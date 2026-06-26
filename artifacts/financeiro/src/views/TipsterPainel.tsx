@@ -490,7 +490,7 @@ REGRAS:
         ))}
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", gap: 8, alignSelf: "center" }}>
-          <button onClick={() => setModalRelatorio(true)} style={{
+          <button onClick={gerarRelatorio} style={{
             padding: "7px 16px", fontSize: 12, borderRadius: 8, cursor: "pointer",
             backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)",
             border: "1px solid var(--border-color)", fontWeight: 600
