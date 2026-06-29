@@ -57,12 +57,11 @@ export default function App() {
   const [entradasPF, setEntradasPF] = useState<any[]>([]);
   const [saidasPF,   setSaidasPF]   = useState<any[]>([]);
   // Investimentos / Patrimônio
-  const [caixinhas,      setCaixinhas]      = useState<any[]>([]);
-  const [consorcios,     setConsorcios]     = useState<any[]>([]);
-  const [proximaParcela, setProximaParcela] = useState<any | null>(null);
+  const [totalCaixinhas,  setTotalCaixinhas]  = useState(0); // vem via callback do Caixinhas.tsx (c/ rendimento CDI)
+  const [consorcios,      setConsorcios]      = useState<any[]>([]);
+  const [proximaParcela,  setProximaParcela]  = useState<any | null>(null);
   // ── PREVIDÊNCIA ──
   const [saldoPrevidencia,   setSaldoPrevidencia]   = useState(0);
-  const [rendPrevidencia,    setRendPrevidencia]     = useState(0); // rendimento acumulado
   const [aportesPrev,        setAportesPrev]         = useState(0);
   const [totalAcoes,         setTotalAcoes]          = useState(0);
   // FGTS
@@ -104,7 +103,7 @@ export default function App() {
     try {
       const [
         rNotas, rDespesas, rEntradas, rSaidas,
-        rCaixinhas, rConsorcios, rParcela,
+        rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
         rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
       ] = await Promise.all([
@@ -112,7 +111,6 @@ export default function App() {
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
         supabase.from("entradas_pessoais").select("valor,data_entrada,tipo,descricao"),
         supabase.from("pessoal_saidas").select("valor,data_gasto,categoria"),
-        supabase.from("caixinhas").select("valor_atual,nome,meta"),
         supabase.from("consorcios").select("valor_bem,descricao"),
         supabase.from("parcelas_calculadas").select("valor_total,data_vencimento").eq("status","pendente").order("data_vencimento",{ascending:true}).limit(1),
         supabase.from("imovel_cub").select("valor_cub").order("data_registro",{ascending:false}).limit(1),
@@ -132,19 +130,16 @@ export default function App() {
       if (rDespesas.data)   setDespesas(rDespesas.data);
       if (rEntradas.data)   setEntradasPF(rEntradas.data);
       if (rSaidas.data)     setSaidasPF(rSaidas.data);
-      if (rCaixinhas.data)  setCaixinhas(rCaixinhas.data);
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
 
-      // ── previdência: usa saldo_final do último rendimento se disponível ──
+      // ── previdência ──
       if (rPrevRend.data && rPrevRend.data[0]) {
         const ultimo = rPrevRend.data[0];
         if (ultimo.saldo_final) {
           setSaldoPrevidencia(Number(ultimo.saldo_final));
         } else {
-          // fallback: soma aportes + rendimentos
           const totalAp  = (rPrevAportes.data || []).reduce((s: number, a: any) => s + Number(a.valor), 0);
-          // busca todos os rendimentos para somar
           const { data: todosRend } = await supabase.from("previdencia_rendimentos").select("valor");
           const totalRend = (todosRend || []).reduce((s: number, r: any) => s + Number(r.valor), 0);
           setSaldoPrevidencia(totalAp + totalRend);
@@ -218,12 +213,11 @@ export default function App() {
   const totalSaidasMes   = saidasDoMes.reduce((s, g) => s + (Number(g.valor) || 0), 0);
   const saldoMes         = totalEntradasMes - totalSaidasMes;
 
-  const totalCaixinhas  = caixinhas.reduce((s, c) => s + (Number(c.valor_atual) || 0), 0);
   const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem)  || 0), 0);
-
   const totalBens = bens.reduce((s: number, b: any) => s + (Number(b.valor_estimado) || 0), 0);
 
-  // ── patrimônio agora inclui previdência ──────────────────────────────────
+  // ── patrimônio ───────────────────────────────────────────────────────────
+  // totalCaixinhas já inclui rendimento CDI (vem do callback do Caixinhas.tsx)
   const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios + saldoPrevidencia + totalAcoes + saldoFGTS + totalBens;
 
   const faturamentoAno  = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
@@ -236,11 +230,6 @@ export default function App() {
   const maxCat = rankingCats[0]?.[1] ?? 1;
 
   const progressoImovel = imovelAtualizado > 0 ? Math.min(100, (imovelPago / imovelAtualizado) * 100) : 0;
-
-  // rentabilidade da previdência
-  const rentabilidadePrev = aportesPrev > 0
-    ? (((saldoPrevidencia - aportesPrev) / aportesPrev) * 100).toFixed(1)
-    : "0";
 
   // ── nav config ────────────────────────────────────────────────────────────
   const navItems = [
@@ -313,12 +302,10 @@ export default function App() {
 
         {/* PATRIMÔNIO */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          {/* Total */}
           <div className="px-6 pt-6 pb-5 border-b border-white/5">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
             <p className="text-3xl sm:text-4xl md:text-5xl font-black tabular-nums text-white tracking-tight privado">{fmt(patrimonioTotal)}</p>
           </div>
-          {/* Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
             {[
               { label: "Apt 810",     valor: imovelPago,       cor: "text-cyan-400",    acao: () => selecionarSubImovel("apartamento") },
@@ -427,7 +414,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Caixinhas */}
+          {/* Caixinhas — card simplificado, valor vem do callback com CDI */}
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -436,22 +423,12 @@ export default function App() {
               </div>
               <button onClick={() => { setSubAbaInvestimento("caixinhas"); setAbaAtiva("investimentos"); }} className="text-[10px] font-bold text-emerald-500 hover:text-emerald-700 flex items-center gap-1">Ver <ArrowRight size={10}/></button>
             </div>
-            <p className="text-2xl font-black text-emerald-600 tabular-nums mb-3 privado">{fmt(totalCaixinhas)}</p>
-            <div className="space-y-2">
-              {caixinhas.slice(0, 4).map((c: any, i: number) => {
-                const pct = c.meta ? Math.min(100, (c.valor_atual / c.meta) * 100) : 0;
-                return (
-                  <div key={i} className="space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-[11px] font-semibold text-slate-600 truncate">{c.nome}</span>
-                      {c.meta && <span className="text-[10px] font-bold text-slate-400">{pct.toFixed(0)}%</span>}
-                    </div>
-                    {c.meta && <div className="h-1.5 bg-slate-100 rounded-full"><div className="h-full bg-emerald-400 rounded-full" style={{ width: `${pct}%` }}/></div>}
-                  </div>
-                );
-              })}
-              {caixinhas.length === 0 && <p className="text-xs text-slate-300 font-semibold">Nenhuma caixinha cadastrada</p>}
-            </div>
+            <p className="text-2xl font-black text-emerald-600 tabular-nums privado">{fmt(totalCaixinhas)}</p>
+            <p className="text-[11px] text-slate-400 mt-2 font-semibold">
+              {totalCaixinhas === 0
+                ? "Abra a aba Caixinhas para carregar o saldo"
+                : "Saldo total c/ rendimento CDI"}
+            </p>
           </div>
 
           {/* Imóvel */}
@@ -595,7 +572,6 @@ export default function App() {
                 title={privado ? 'Mostrar valores' : 'Ocultar valores'}>
                 {privado ? <EyeOff size={16}/> : <Eye size={16}/>}
               </button>
-              {/* Hamburger - mobile only */}
               <button onClick={() => setMenuMobileAberto(v => !v)}
                 className="p-2 rounded-xl transition-all md:hidden"
                 style={{ color: 'var(--text-muted)' }}>
@@ -671,7 +647,6 @@ export default function App() {
           {menuMobileAberto && (
             <div className="md:hidden border-t" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
               <nav className="max-w-7xl mx-auto px-4 py-3 space-y-1">
-                {/* Principal */}
                 {navItems.map(item => (
                   <button key={item.id} onClick={() => { setAbaAtiva(item.id); setMenuMobileAberto(false); }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${abaAtiva === item.id ? "text-blue-600" : ""}`}
@@ -680,7 +655,6 @@ export default function App() {
                   </button>
                 ))}
 
-                {/* Imóveis */}
                 <div className="pt-2 pb-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest px-4 mb-1" style={{ color: 'var(--text-muted)' }}>Imóveis</p>
                 </div>
@@ -692,7 +666,6 @@ export default function App() {
                   </button>
                 ))}
 
-                {/* Pessoal */}
                 <div className="pt-2 pb-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest px-4 mb-1" style={{ color: 'var(--text-muted)' }}>Pessoal</p>
                 </div>
@@ -704,7 +677,6 @@ export default function App() {
                   </button>
                 ))}
 
-                {/* Investimentos */}
                 <div className="pt-2 pb-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest px-4 mb-1" style={{ color: 'var(--text-muted)' }}>Investimentos</p>
                 </div>
@@ -765,7 +737,7 @@ export default function App() {
           {abaAtiva === "pessoal" && subAbaPessoal === "bancos"     && <ExtratosBancarios />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"       && <CarteiraInvestimentos />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios"  && <Consorcios />}
-          {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"   && <Caixinhas />}
+          {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"   && <Caixinhas onTotalCalculado={setTotalCaixinhas} />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "previdencia" && <PrevidenciaPainel />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "fgts"        && <FGTSPainel />}
         </main>
