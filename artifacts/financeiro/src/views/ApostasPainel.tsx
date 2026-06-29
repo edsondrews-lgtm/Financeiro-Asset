@@ -28,13 +28,14 @@ interface Toast {
   msg: string;
 }
 
-const CASAS = ['Granawin', 'BetandYou', 'BetLabel', 'WinWin'];
+const CASAS = ['Granawin', 'BetandYou', 'BetLabel', 'WinWin', 'Bet365'];
 
 const CASA_CFG: Record<string, { bg: string; text: string; accent: string; border: string; highlight: string }> = {
   'Granawin':  { bg: 'bg-emerald-600', text: 'text-white', accent: '#059669', border: 'border-emerald-200', highlight: '#05966915' },
   'BetandYou': { bg: 'bg-blue-600',    text: 'text-white', accent: '#2563EB', border: 'border-blue-200',    highlight: '#2563EB15' },
   'BetLabel':  { bg: 'bg-violet-600',  text: 'text-white', accent: '#7c3aed', border: 'border-violet-200',  highlight: '#7c3aed15' },
   'WinWin':    { bg: 'bg-orange-600',  text: 'text-white', accent: '#EA580C', border: 'border-orange-200',  highlight: '#EA580C15' },
+  'Bet365':    { bg: 'bg-sky-600',     text: 'text-white', accent: '#0284c7', border: 'border-sky-200',     highlight: '#0284c715' },
 };
 
 const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -57,13 +58,12 @@ function navegarMes(ym: string, dir: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 function labelMesYM(ym: string) {
-  const [a, m] = ym.split('-').map(Number);
+  const [a, m] = ym.split('-').map(s => parseInt(s, 10));
   if (!m || m < 1 || m > 12) return ym;
   return `${MESES_LABEL[m - 1]}/${String(a).slice(2)}`;
 }
 
 const inputCls = 'w-full px-3 py-2.5 rounded-xl text-xs font-semibold focus:outline-none transition-colors';
-const inputClsErr = 'w-full px-3 py-2.5 rounded-xl text-xs font-semibold focus:outline-none transition-colors';
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -92,7 +92,6 @@ export default function ApostasPainel() {
   const [toast,       setToast]       = useState<Toast | null>(null);
   const [errosForm,   setErrosForm]   = useState<Record<string, string>>({});
 
-  // privacidade é controlada globalmente via App.tsx
   const [privado, setPrivado] = useState(false);
   useEffect(() => {
     const obs = new MutationObserver(() => {
@@ -105,7 +104,6 @@ export default function ApostasPainel() {
 
   const privCls = privado ? 'privado' : '';
 
-  // toast automático
   const showToast = useCallback((tipo: Toast['tipo'], msg: string) => {
     setToast({ id: Date.now(), tipo, msg });
     setTimeout(() => setToast(null), 3500);
@@ -209,8 +207,10 @@ export default function ApostasPainel() {
     : null;
   const tendenciaMelhorando = tendencia !== null ? resMesAtual > resMesAnterior : null;
 
-  // por casa
-  const statsCasa = CASAS.map(casa => {
+  // por casa — só exibe casas que têm lançamentos
+  const casasComLancamentos = CASAS.filter(casa => lancamentos.some(l => l.casa === casa));
+
+  const statsCasa = casasComLancamentos.map(casa => {
     const dep = lancamentos.filter(l => l.casa === casa && l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
     const saq = lancamentos.filter(l => l.casa === casa && l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
     const res = saq - dep;
@@ -265,7 +265,7 @@ export default function ApostasPainel() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Apostas</h1>
-              <p className="text-[10px] sm:text-xs font-semibold mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-[10px] sm:text-xs font-semibold mt-0.5 flex items-center gap-1 flex-wrap" style={{ color: 'var(--text-muted)' }}>
                 {CASAS.map((c, i) => (
                   <React.Fragment key={c}>
                     {i > 0 && <span>·</span>}
@@ -380,7 +380,7 @@ export default function ApostasPainel() {
               <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Por Casa</p>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {statsCasa.map(s => {
-                  const cfg = CASA_CFG[s.casa];
+                  const cfg = CASA_CFG[s.casa] ?? { accent: '#64748b', highlight: '#64748b15' };
                   const positivo = s.res >= 0;
                   return (
                     <div key={s.casa} className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
@@ -421,7 +421,6 @@ export default function ApostasPainel() {
 
             {/* Gráficos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {/* Gráfico evolução mensal */}
               <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Resultado Mensal</p>
                 <ResponsiveContainer width="100%" height={160}>
@@ -451,7 +450,6 @@ export default function ApostasPainel() {
                 </div>
               </div>
 
-              {/* Gráfico depósitos vs saques */}
               <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Depósitos vs Saques</p>
                 <ResponsiveContainer width="100%" height={160}>
@@ -546,7 +544,8 @@ export default function ApostasPainel() {
                         <tr key={l.id} className="transition-colors group/row" style={{ borderBottom: '1px solid var(--border-light)' }}>
                           <td className="py-3 text-[11px] font-medium pr-3" style={{ color: 'var(--text-muted)' }}>{fmtData(l.data)}</td>
                           <td className="py-3 pr-3">
-                            <span className="inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold" style={{ color: CASA_CFG[l.casa]?.accent ?? '#64748b', backgroundColor: CASA_CFG[l.casa]?.highlight ?? '#64748b15' }}>
+                            <span className="inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold"
+                              style={{ color: CASA_CFG[l.casa]?.accent ?? '#64748b', backgroundColor: CASA_CFG[l.casa]?.highlight ?? '#64748b15' }}>
                               {l.casa}
                             </span>
                           </td>
