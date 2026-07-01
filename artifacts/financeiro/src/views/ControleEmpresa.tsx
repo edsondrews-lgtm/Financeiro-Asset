@@ -64,8 +64,8 @@ export default function ControleEmpresa() {
   async function buscarDados() {
     setLoading(true);
     try {
-      const { data: n } = await supabase.from('empresa_notas_fiscais').select('*').order('data_emissao', { ascending: false });
-      if (n) setNotas(n);
+      const { data: n } = await supabase.from('empresa_notas_fiscais').select('*');
+      if (n) setNotas([...n].sort((a, b) => (parseInt(a.numero_nota) || 0) - (parseInt(b.numero_nota) || 0)));
       const { data: d } = await supabase.from('empresa_despesas').select('*');
       if (d) setDespesas(d.map(item => ({ ...item, data_vencimento: item.data_vencimento || item.data || item.vencimento || '' })));
       const { data: f } = await supabase.from('empresa_controle_fechamento').select('*').order('id', { ascending: false }).limit(1);
@@ -197,7 +197,12 @@ export default function ControleEmpresa() {
               </select>
             </div>
             <button
-              onClick={() => { setIdEditando(null); setNovaNota({ numero_nota:'', data_emissao:`${anoAtivo}-${mesAtivo}-01`, tomador:'', servico:'', valor:'' }); setModalNota(true); }}
+              onClick={() => {
+                setIdEditando(null);
+                const maxNum = notas.reduce((max, n) => Math.max(max, parseInt(n.numero_nota) || 0), 0);
+                setNovaNota({ numero_nota: String(maxNum + 1), data_emissao:`${anoAtivo}-${mesAtivo}-01`, tomador:'', servico:'', valor:'' });
+                setModalNota(true);
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200"
             >
               <Plus size={13}/> Nova Nota
