@@ -65,7 +65,7 @@ export default function ControleEmpresa() {
     setLoading(true);
     try {
       const { data: n } = await supabase.from('empresa_notas_fiscais').select('*');
-      if (n) setNotas([...n].sort((a, b) => (parseInt(a.numero_nota) || 0) - (parseInt(b.numero_nota) || 0)));
+      if (n) setNotas([...n].sort((a, b) => (parseInt(b.numero_nota) || 0) - (parseInt(a.numero_nota) || 0)));
       const { data: d } = await supabase.from('empresa_despesas').select('*');
       if (d) setDespesas(d.map(item => ({ ...item, data_vencimento: item.data_vencimento || item.data || item.vencimento || '' })));
       const { data: f } = await supabase.from('empresa_controle_fechamento').select('*').order('id', { ascending: false }).limit(1);
