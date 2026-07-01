@@ -232,6 +232,14 @@ export default function ControleEmpresa() {
         {subAba === 'dashboard' && (
           <div className="space-y-6">
 
+            {/* Aviso fechamento junho */}
+            <div className="flex gap-3 p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs leading-relaxed">
+              <span className="text-lg shrink-0">⚠️</span>
+              <p>
+                No fechamento de junho, foram identificadas duas notas fiscais que não foram lançadas, referentes aos dias <strong>13/06</strong> e <strong>14/06</strong>. A ausência desses lançamentos gerou uma diferença de <strong>R$ 1.219,00</strong>, correspondente à soma das notas de <strong>R$ 538,00 (13/06)</strong> e <strong>R$ 681,00 (14/06)</strong>.
+              </p>
+            </div>
+
             {/* KPIs principais */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
@@ -337,7 +345,17 @@ export default function ControleEmpresa() {
 
         {/* ── NOTAS FISCAIS ── */}
         {subAba === 'notas' && (
-          <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="space-y-4">
+
+            {/* Aviso fechamento junho */}
+            <div className="flex gap-3 p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs leading-relaxed">
+              <span className="text-lg shrink-0">⚠️</span>
+              <p>
+                No fechamento de junho, foram identificadas duas notas fiscais que não foram lançadas, referentes aos dias <strong>13/06</strong> e <strong>14/06</strong>. A ausência desses lançamentos gerou uma diferença de <strong>R$ 1.219,00</strong>, correspondente à soma das notas de <strong>R$ 538,00 (13/06)</strong> e <strong>R$ 681,00 (14/06)</strong>.
+              </p>
+            </div>
+
+            <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
                 <p className="text-sm font-black text-slate-900">Notas Fiscais</p>
@@ -382,6 +400,7 @@ export default function ControleEmpresa() {
                 ))}
               </div>
             )}
+            </div>
           </div>
         )}
 
