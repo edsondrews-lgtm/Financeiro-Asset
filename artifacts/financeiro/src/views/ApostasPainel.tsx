@@ -194,31 +194,28 @@ export default function ApostasPainel() {
   const depMes     = lancMes.filter(l => l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
   const saqMes     = lancMes.filter(l => l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
   const resMes     = saqMes - depMes;
+  const roiMes     = depMes > 0 ? (resMes / depMes) * 100 : 0;
 
-  // ── tendência mês a mês ──────────────────────────────────────────────────
-  const mesAtual = mesAtualYM();
-  const mesAnterior = navegarMes(mesAtual, -1);
-
-  function resultadoMes(ym: string) {
-    const dep = lancamentos.filter(l => l.data.startsWith(ym) && l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
-    const saq = lancamentos.filter(l => l.data.startsWith(ym) && l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
-    return saq - dep;
+  // tendência: mês selecionado vs mês anterior
+  const mesAnteriorDash = navegarMes(mesDashboard, -1);
+  function calcResMes(ym: string) {
+    const d = lancamentos.filter(l => l.data.startsWith(ym) && l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
+    const s = lancamentos.filter(l => l.data.startsWith(ym) && l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
+    return s - d;
   }
-
-  const resMesAtual    = resultadoMes(mesAtual);
-  const resMesAnterior = resultadoMes(mesAnterior);
-  const temHistorico   = lancamentos.some(l => l.data.startsWith(mesAnterior));
-  const tendencia      = temHistorico && resMesAnterior !== 0
-    ? ((resMesAtual - resMesAnterior) / Math.abs(resMesAnterior)) * 100
+  const resMesAnterior  = calcResMes(mesAnteriorDash);
+  const temHistorico    = lancamentos.some(l => l.data.startsWith(mesAnteriorDash));
+  const tendencia       = temHistorico && resMesAnterior !== 0
+    ? ((resMes - resMesAnterior) / Math.abs(resMesAnterior)) * 100
     : null;
-  const tendenciaMelhorando = tendencia !== null ? resMesAtual > resMesAnterior : null;
+  const tendenciaMelhorando = tendencia !== null ? resMes > resMesAnterior : null;
 
-  // por casa — só exibe casas que têm lançamentos
-  const casasComLancamentos = CASAS.filter(casa => lancamentos.some(l => l.casa === casa));
+  // por casa — filtrado pelo mês selecionado, só exibe casas com lançamentos no mês
+  const casasComLancamentos = CASAS.filter(casa => lancMes.some(l => l.casa === casa));
 
   const statsCasa = casasComLancamentos.map(casa => {
-    const dep = lancamentos.filter(l => l.casa === casa && l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
-    const saq = lancamentos.filter(l => l.casa === casa && l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
+    const dep = lancMes.filter(l => l.casa === casa && l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
+    const saq = lancMes.filter(l => l.casa === casa && l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
     const res = saq - dep;
     const r   = dep > 0 ? (res / dep) * 100 : 0;
     return { casa, dep, saq, res, roi: r };
@@ -311,18 +308,49 @@ export default function ApostasPainel() {
         {subAba === 'dashboard' && (
           <div className="space-y-5">
 
-            {/* Hero resultado geral */}
+            {/* ── Seletor de mês (controla todo o dashboard) ── */}
+            <div className="flex items-center justify-between px-1">
+              <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                Exibindo dados de <span style={{ color: 'var(--text-primary)' }}>{labelMesYM(mesDashboard)}</span>
+              </p>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setMesDashboard(m => navegarMes(m, -1))}
+                  className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  <ChevronLeft size={13}/>
+                </button>
+                <span className="text-xs font-black px-3 py-1.5 rounded-lg min-w-[72px] text-center" style={{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  {labelMesYM(mesDashboard)}
+                </span>
+                <button onClick={() => setMesDashboard(m => navegarMes(m, +1))}
+                  className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  <ChevronRight size={13}/>
+                </button>
+                <button onClick={() => setMesDashboard(mesAtualYM())}
+                  className="ml-1 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors" style={{ color: 'var(--accent)', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  Hoje
+                </button>
+              </div>
+            </div>
+
+            {lancMes.length === 0 ? (
+              <div className="rounded-2xl p-10 text-center" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+                <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Sem lançamentos em {labelMesYM(mesDashboard)}</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Navegue para outro mês ou adicione um lançamento.</p>
+              </div>
+            ) : (
+              <>
+            {/* Hero resultado do mês */}
             <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-              <div className={`px-6 py-5 ${resultado >= 0 ? 'bg-gradient-to-r from-emerald-600/10 to-teal-600/5' : 'bg-gradient-to-r from-rose-600/10 to-red-600/5'}`}
+              <div className={`px-6 py-5 ${resMes >= 0 ? 'bg-gradient-to-r from-emerald-600/10 to-teal-600/5' : 'bg-gradient-to-r from-rose-600/10 to-red-600/5'}`}
                 style={{ borderBottom: '1px solid var(--border-light)' }}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl ${resultado >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
-                      <Target size={18} className={resultado >= 0 ? 'text-emerald-500' : 'text-rose-500'}/>
+                    <div className={`p-2.5 rounded-xl ${resMes >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
+                      <Target size={18} className={resMes >= 0 ? 'text-emerald-500' : 'text-rose-500'}/>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Resultado Geral</p>
-                      <p className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>Todas as casas</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Resultado do Mês</p>
+                      <p className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{labelMesYM(mesDashboard)} · Todas as casas</p>
                     </div>
                   </div>
                   {tendencia !== null && tendenciaMelhorando !== null && (
@@ -330,73 +358,26 @@ export default function ApostasPainel() {
                       tendenciaMelhorando ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
                     }`}>
                       {tendenciaMelhorando ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
-                      {tendencia >= 0 ? '+' : ''}{tendencia.toFixed(1)}% vs mês anterior
+                      {tendencia >= 0 ? '+' : ''}{tendencia.toFixed(1)}% vs {labelMesYM(mesAnteriorDash)}
                     </div>
                   )}
                 </div>
               </div>
               <div className="px-6 py-6">
                 <p className={`text-4xl sm:text-5xl font-black tracking-tight ${privCls}`}
-                  style={{ color: resultado >= 0 ? 'var(--chart-green)' : 'var(--chart-red)' }}>
-                  {resultado >= 0 ? '+' : '−'} R$ {fmtBRL(Math.abs(resultado))}
+                  style={{ color: resMes >= 0 ? 'var(--chart-green)' : 'var(--chart-red)' }}>
+                  {resMes >= 0 ? '+' : '−'} R$ {fmtBRL(Math.abs(resMes))}
                 </p>
               </div>
             </div>
 
-            {/* ── Resumo por mês ── */}
-            <div className="rounded-2xl p-5 space-y-4" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-              {/* Seletor de mês */}
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Resumo do Mês</p>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setMesDashboard(m => navegarMes(m, -1))}
-                    className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)' }}>
-                    <ChevronLeft size={13}/>
-                  </button>
-                  <span className="text-xs font-black px-3 py-1 rounded-lg min-w-[72px] text-center" style={{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-tertiary)' }}>
-                    {labelMesYM(mesDashboard)}
-                  </span>
-                  <button onClick={() => setMesDashboard(m => navegarMes(m, +1))}
-                    className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)' }}>
-                    <ChevronRight size={13}/>
-                  </button>
-                  <button onClick={() => setMesDashboard(mesAtualYM())}
-                    className="ml-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-colors" style={{ color: 'var(--accent)', backgroundColor: 'var(--bg-tertiary)' }}>
-                    Hoje
-                  </button>
-                </div>
-              </div>
-
-              {lancMes.length === 0 ? (
-                <p className="text-xs text-center py-4" style={{ color: 'var(--text-muted)' }}>Nenhum lançamento em {labelMesYM(mesDashboard)}</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: 'Depositado', value: depMes, color: 'text-rose-500', icon: <ArrowDownRight size={14}/>, bg: 'bg-rose-500/10', prefix: '−' },
-                    { label: 'Sacado',     value: saqMes, color: 'text-emerald-500', icon: <ArrowUpRight size={14}/>, bg: 'bg-emerald-500/10', prefix: '+' },
-                    { label: 'Resultado',  value: resMes, color: resMes >= 0 ? 'text-emerald-500' : 'text-rose-500', icon: <Wallet size={14}/>, bg: resMes >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10', prefix: resMes >= 0 ? '+' : '−' },
-                  ].map((c, i) => (
-                    <div key={i} className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
-                      <div className={`w-7 h-7 flex items-center justify-center rounded-lg mb-3 ${c.bg}`}>
-                        <span className={c.color}>{c.icon}</span>
-                      </div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>{c.label}</p>
-                      <p className={`text-base font-black ${c.color} ${privCls}`}>
-                        {c.prefix} R$ {fmtBRL(Math.abs(c.value))}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Stats grid */}
+            {/* Stats grid do mês */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                { label: 'Depositado', value: totalDepositos, icon: <ArrowDownRight size={14}/>, color: 'text-rose-500', bg: 'bg-rose-500/10' },
-                { label: 'Sacado', value: totalSaques, icon: <ArrowUpRight size={14}/>, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-                { label: 'Resultado', value: resultado, icon: <Activity size={14}/>, color: resultado >= 0 ? 'text-emerald-500' : 'text-rose-500', bg: resultado >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10' },
-                { label: 'ROI', value: null, roi: roi, icon: <BarChart2 size={14}/>, color: roi >= 0 ? 'text-emerald-500' : 'text-rose-500', bg: roi >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10' },
+                { label: 'Depositado', value: depMes, icon: <ArrowDownRight size={14}/>, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+                { label: 'Sacado',     value: saqMes, icon: <ArrowUpRight size={14}/>, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                { label: 'Resultado',  value: resMes, icon: <Activity size={14}/>, color: resMes >= 0 ? 'text-emerald-500' : 'text-rose-500', bg: resMes >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10' },
+                { label: 'ROI',        value: null, roi: roiMes, icon: <BarChart2 size={14}/>, color: roiMes >= 0 ? 'text-emerald-500' : 'text-rose-500', bg: roiMes >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10' },
               ].map((stat, i) => (
                 <div key={i} className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
                   <div className="flex items-center justify-between mb-3">
@@ -415,14 +396,14 @@ export default function ApostasPainel() {
             </div>
 
             {/* Alerta motivacional */}
-            {resultado < 0 && (
+            {resMes < 0 && (
               <div className="flex gap-3 p-4 rounded-xl items-start" style={{ backgroundColor: 'var(--color-warning-bg)', border: '1px solid var(--color-warning)' }}>
                 <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5"/>
                 <div>
-                  <p className="text-xs font-bold" style={{ color: 'var(--color-warning)' }}>Atenção ao saldo</p>
+                  <p className="text-xs font-bold" style={{ color: 'var(--color-warning)' }}>Atenção ao saldo em {labelMesYM(mesDashboard)}</p>
                   <p className="text-[11px] font-medium mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    Prejuízo acumulado de <strong className={privCls}>R$ {fmtBRL(Math.abs(resultado))}</strong>.
-                    {temHistorico && tendenciaMelhorando === false && ' Resultado piorou vs mês anterior.'}
+                    Prejuízo de <strong className={privCls}>R$ {fmtBRL(Math.abs(resMes))}</strong> no mês.
+                    {temHistorico && tendenciaMelhorando === false && ` Resultado piorou vs ${labelMesYM(mesAnteriorDash)}.`}
                   </p>
                 </div>
               </div>
@@ -528,6 +509,8 @@ export default function ApostasPainel() {
                 </div>
               </div>
             </div>
+              </>
+            )}
 
           </div>
         )}
