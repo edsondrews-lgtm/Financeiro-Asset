@@ -77,7 +77,10 @@ export default function ImportadorNubank({ cartoes, onImportSucess }: { cartoes:
         if (colunas.length >= 3) {
           const dataGasto = colunas[0].trim();
           const titulo = colunas[1].replace(/"/g, '').trim();
-          const valor = parseFloat(colunas[2].trim());
+          // suporta formato brasileiro: "19,90" ou "- 400,00"
+          const valorRaw = colunas[2].replace(/"/g, '').replace(/\s/g, '').trim();
+          const valorStr = valorRaw.replace(',', '.');
+          const valor = parseFloat(valorStr);
           if (dataGasto && titulo && !isNaN(valor)) {
             itens.push({ id_temporario: i, data_gasto: dataGasto, descricao: titulo, categoria: descobrirCategoriaInteligente(titulo, valor), valor, periodicidade: 'Único', foiAlteradoManualmente: false });
           }
