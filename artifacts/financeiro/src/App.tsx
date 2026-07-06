@@ -337,7 +337,7 @@ export default function App() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Fluxo Pessoal — {MESES_COMPLETOS[Number(mesDash)-1]} {anoDash}
+              Fluxo Pessoal · {MESES_COMPLETOS[Number(mesDash)-1]} {anoDash}
             </p>
             <button
               onClick={() => selecionarSubPessoal("resumo")}
@@ -350,7 +350,7 @@ export default function App() {
             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
                 <div className="p-1.5 bg-emerald-50 rounded-lg"><ArrowUpRight size={14} className="text-emerald-600"/></div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entradas PF</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entradas</p>
               </div>
               <p className="text-2xl font-black text-emerald-600 tabular-nums privado">{fmt(totalEntradasMes)}</p>
               {entradasDoMes.length === 0
@@ -360,7 +360,7 @@ export default function App() {
             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
                 <div className="p-1.5 bg-rose-50 rounded-lg"><DollarSign size={14} className="text-rose-600"/></div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saídas PF</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saídas</p>
               </div>
               <p className="text-2xl font-black text-rose-600 tabular-nums privado">{fmt(totalSaidasMes)}</p>
               {saidasDoMes.length === 0
@@ -375,7 +375,7 @@ export default function App() {
               <p className="text-2xl font-black tabular-nums privado">{fmt(saldoMes)}</p>
               <p className="text-[11px] text-white/70 mt-2 font-semibold">
                 {saldoMes >= 0 ? "✓ Mês positivo" : "⚠ Gastos acima das entradas"}
-                {totalEntradasMes === 0 && " · cadastre entradas PF"}
+                {totalEntradasMes === 0 && " · cadastre entradas em Pessoal"}
               </p>
             </div>
           </div>
