@@ -49,7 +49,6 @@ function fmtData(d: string) {
 }
 function mesAtualYM() {
   const d = new Date();
-  d.setMonth(d.getMonth() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 function navegarMes(ym: string, dir: number) {
@@ -92,6 +91,7 @@ export default function ApostasPainel() {
   const [toast,       setToast]       = useState<Toast | null>(null);
   const [errosForm,   setErrosForm]   = useState<Record<string, string>>({});
 
+  const [mesDashboard, setMesDashboard] = useState(mesAtualYM());
   const [privado, setPrivado] = useState(false);
   useEffect(() => {
     const obs = new MutationObserver(() => {
@@ -188,6 +188,12 @@ export default function ApostasPainel() {
   const totalSaques    = lancamentos.filter(l => l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
   const resultado      = totalSaques - totalDepositos;
   const roi            = totalDepositos > 0 ? (resultado / totalDepositos) * 100 : 0;
+
+  // ── cálculos do mês selecionado no dashboard ───────────────────────────
+  const lancMes    = lancamentos.filter(l => l.data.startsWith(mesDashboard));
+  const depMes     = lancMes.filter(l => l.tipo === 'DEPOSITO').reduce((a, l) => a + Number(l.valor), 0);
+  const saqMes     = lancMes.filter(l => l.tipo === 'SAQUE').reduce((a, l) => a + Number(l.valor), 0);
+  const resMes     = saqMes - depMes;
 
   // ── tendência mês a mês ──────────────────────────────────────────────────
   const mesAtual = mesAtualYM();
@@ -335,6 +341,53 @@ export default function ApostasPainel() {
                   {resultado >= 0 ? '+' : '−'} R$ {fmtBRL(Math.abs(resultado))}
                 </p>
               </div>
+            </div>
+
+            {/* ── Resumo por mês ── */}
+            <div className="rounded-2xl p-5 space-y-4" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+              {/* Seletor de mês */}
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Resumo do Mês</p>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setMesDashboard(m => navegarMes(m, -1))}
+                    className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)' }}>
+                    <ChevronLeft size={13}/>
+                  </button>
+                  <span className="text-xs font-black px-3 py-1 rounded-lg min-w-[72px] text-center" style={{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-tertiary)' }}>
+                    {labelMesYM(mesDashboard)}
+                  </span>
+                  <button onClick={() => setMesDashboard(m => navegarMes(m, +1))}
+                    className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)' }}>
+                    <ChevronRight size={13}/>
+                  </button>
+                  <button onClick={() => setMesDashboard(mesAtualYM())}
+                    className="ml-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-colors" style={{ color: 'var(--accent)', backgroundColor: 'var(--bg-tertiary)' }}>
+                    Hoje
+                  </button>
+                </div>
+              </div>
+
+              {lancMes.length === 0 ? (
+                <p className="text-xs text-center py-4" style={{ color: 'var(--text-muted)' }}>Nenhum lançamento em {labelMesYM(mesDashboard)}</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Depositado', value: depMes, color: 'text-rose-500', icon: <ArrowDownRight size={14}/>, bg: 'bg-rose-500/10', prefix: '−' },
+                    { label: 'Sacado',     value: saqMes, color: 'text-emerald-500', icon: <ArrowUpRight size={14}/>, bg: 'bg-emerald-500/10', prefix: '+' },
+                    { label: 'Resultado',  value: resMes, color: resMes >= 0 ? 'text-emerald-500' : 'text-rose-500', icon: <Wallet size={14}/>, bg: resMes >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10', prefix: resMes >= 0 ? '+' : '−' },
+                  ].map((c, i) => (
+                    <div key={i} className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
+                      <div className={`w-7 h-7 flex items-center justify-center rounded-lg mb-3 ${c.bg}`}>
+                        <span className={c.color}>{c.icon}</span>
+                      </div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>{c.label}</p>
+                      <p className={`text-base font-black ${c.color} ${privCls}`}>
+                        {c.prefix} R$ {fmtBRL(Math.abs(c.value))}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Stats grid */}
