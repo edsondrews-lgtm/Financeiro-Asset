@@ -58,6 +58,7 @@ export default function App() {
   const [saidasPF,   setSaidasPF]   = useState<any[]>([]);
   // Investimentos / Patrimônio
   const [totalCaixinhas,  setTotalCaixinhas]  = useState(0); // vem via callback do Caixinhas.tsx (c/ rendimento CDI)
+  const [listaCaixinhas,  setListaCaixinhas]  = useState<{ nome: string; valor_atual: number }[]>([]);
   const [consorcios,      setConsorcios]      = useState<any[]>([]);
   const [proximaParcela,  setProximaParcela]  = useState<any | null>(null);
   // ── PREVIDÊNCIA ──
@@ -125,7 +126,7 @@ export default function App() {
         supabase.from("carteira_investimentos").select("preco_medio,quantidade"),
         supabase.from("fgts_lancamentos").select("saldo_total").order("data",{ascending:false}).limit(1),
         supabase.from("bens").select("valor_estimado"),
-        supabase.from("caixinhas").select("valor_atual"),
+        supabase.from("caixinhas").select("nome,valor_atual").order("created_at", { ascending: true }),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
@@ -135,7 +136,9 @@ export default function App() {
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
       if (rCaixinhas.data && rCaixinhas.data.length > 0) {
-        const total = rCaixinhas.data.reduce((s: number, c: any) => s + Number(c.valor_atual), 0);
+        const lista = rCaixinhas.data.map((c: any) => ({ nome: c.nome, valor_atual: Number(c.valor_atual) }));
+        setListaCaixinhas(lista);
+        const total = lista.reduce((s: number, c: { valor_atual: number }) => s + c.valor_atual, 0);
         setTotalCaixinhas(total);
       }
 
@@ -422,19 +425,37 @@ export default function App() {
 
           {/* Caixinhas — card simplificado, valor vem do callback com CDI */}
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-emerald-50 rounded-lg"><PiggyBank size={14} className="text-emerald-600"/></div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Caixinhas</p>
               </div>
               <button onClick={() => { setSubAbaInvestimento("caixinhas"); setAbaAtiva("investimentos"); }} className="text-[10px] font-bold text-emerald-500 hover:text-emerald-700 flex items-center gap-1">Ver <ArrowRight size={10}/></button>
             </div>
-            <p className="text-2xl font-black text-emerald-600 tabular-nums privado">{fmt(totalCaixinhas)}</p>
-            <p className="text-[11px] text-slate-400 mt-2 font-semibold">
-              {totalCaixinhas === 0
-                ? "Abra a aba Caixinhas para carregar o saldo"
-                : "Saldo total c/ rendimento CDI"}
-            </p>
+            <p className="text-2xl font-black text-emerald-600 tabular-nums privado mb-3">{fmt(totalCaixinhas)}</p>
+            {listaCaixinhas.length > 0 ? (
+              <div className="space-y-2 border-t border-slate-50 pt-3">
+                {(() => {
+                  const maxVal = Math.max(...listaCaixinhas.map(c => c.valor_atual), 1);
+                  return listaCaixinhas.map((c, i) => (
+                    <div key={i} className="space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-300 font-bold w-3">{i+1}</span>
+                          <span className="text-xs font-semibold text-slate-700 truncate max-w-[120px]">{c.nome}</span>
+                        </div>
+                        <span className="text-xs font-black text-slate-800 tabular-nums privado">{fmt(c.valor_atual)}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full ml-[18px]">
+                        <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${(c.valor_atual / maxVal) * 100}%` }}/>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400 font-semibold">Saldo total c/ rendimento CDI</p>
+            )}
           </div>
 
           {/* Imóvel */}
