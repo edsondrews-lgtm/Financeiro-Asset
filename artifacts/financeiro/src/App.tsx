@@ -106,6 +106,7 @@ export default function App() {
         rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
         rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
+        rCaixinhas,
       ] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
@@ -124,6 +125,7 @@ export default function App() {
         supabase.from("carteira_investimentos").select("preco_medio,quantidade"),
         supabase.from("fgts_lancamentos").select("saldo_total").order("data",{ascending:false}).limit(1),
         supabase.from("bens").select("valor_estimado"),
+        supabase.from("caixinhas").select("valor_atual"),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
@@ -132,6 +134,10 @@ export default function App() {
       if (rSaidas.data)     setSaidasPF(rSaidas.data);
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
+      if (rCaixinhas.data && rCaixinhas.data.length > 0) {
+        const total = rCaixinhas.data.reduce((s: number, c: any) => s + Number(c.valor_atual), 0);
+        setTotalCaixinhas(total);
+      }
 
       // ── previdência ──
       if (rPrevRend.data && rPrevRend.data[0]) {
