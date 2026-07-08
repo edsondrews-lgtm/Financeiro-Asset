@@ -1,38 +1,55 @@
 import React, { useState, useEffect } from 'react'
 import { Lock, Eye, EyeOff } from 'lucide-react'
-
-const SENHA_CORRETA = 'financas2026'
-const STORAGE_KEY = 'fh_auth'
+import type { Session } from '@supabase/supabase-js'
+import { supabase } from '../lib/supabaseClient'
 
 interface Props {
   children: React.ReactNode
 }
 
 export default function PasswordGate({ children }: Props) {
-  const [liberado, setLiberado] = useState(false)
-  const [senha, setSenha] = useState('')
-  const [erro, setErro] = useState(false)
-  const [mostrar, setMostrar] = useState(false)
+  const [session, setSession]     = useState<Session | null>(null)
+  const [carregando, setCarregando] = useState(true)
+  const [email, setEmail]         = useState('')
+  const [senha, setSenha]         = useState('')
+  const [erro, setErro]           = useState('')
+  const [mostrar, setMostrar]     = useState(false)
+  const [enviando, setEnviando]   = useState(false)
 
   useEffect(() => {
-    if (localStorage.getItem(STORAGE_KEY) === 'ok') {
-      setLiberado(true)
-    }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setCarregando(false)
+    })
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => listener.subscription.unsubscribe()
   }, [])
 
-  function entrar(e: React.FormEvent) {
+  async function entrar(e: React.FormEvent) {
     e.preventDefault()
-    if (senha === SENHA_CORRETA) {
-      localStorage.setItem(STORAGE_KEY, 'ok')
-      setLiberado(true)
-    } else {
-      setErro(true)
+    setEnviando(true)
+    setErro('')
+    const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
+    if (error) {
+      setErro('E-mail ou senha inválidos')
       setSenha('')
-      setTimeout(() => setErro(false), 2000)
     }
+    setEnviando(false)
   }
 
-  if (liberado) return <>{children}</>
+  if (carregando) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (session) return <>{children}</>
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -48,13 +65,21 @@ export default function PasswordGate({ children }: Props) {
         </div>
 
         <form onSubmit={entrar} className="space-y-4">
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="E-mail"
+            autoFocus
+            className="w-full px-4 py-3 rounded-xl border text-sm font-medium outline-none transition-all border-slate-200 bg-slate-50 text-slate-800 focus:border-indigo-400 focus:bg-white"
+          />
+
           <div className="relative">
             <input
               type={mostrar ? 'text' : 'password'}
               value={senha}
               onChange={e => setSenha(e.target.value)}
               placeholder="Senha"
-              autoFocus
               className={`w-full px-4 py-3 pr-12 rounded-xl border text-sm font-medium outline-none transition-all
                 ${erro
                   ? 'border-rose-400 bg-rose-50 text-rose-700 placeholder-rose-300'
@@ -71,14 +96,15 @@ export default function PasswordGate({ children }: Props) {
           </div>
 
           {erro && (
-            <p className="text-xs text-rose-500 font-bold text-center">Senha incorreta</p>
+            <p className="text-xs text-rose-500 font-bold text-center">{erro}</p>
           )}
 
           <button
             type="submit"
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors"
+            disabled={enviando}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60"
           >
-            Entrar
+            {enviando ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
       </div>
