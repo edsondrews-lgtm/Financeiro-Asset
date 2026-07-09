@@ -66,7 +66,7 @@ async function baixarArquivoTelegram(fileId: string): Promise<Buffer> {
 
 async function chamarGemini(parts: Record<string, unknown>[]) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -181,6 +181,11 @@ export default async function handler(req: any, res: any) {
     }
   } catch (e) {
     console.error(e);
+    const chatId = update.message?.chat?.id ?? update.callback_query?.message?.chat?.id;
+    if (chatId) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await telegramCall("sendMessage", { chat_id: chatId, text: `⚠️ Erro interno: ${msg}` }).catch(() => {});
+    }
   }
 
   res.status(200).send("ok");
