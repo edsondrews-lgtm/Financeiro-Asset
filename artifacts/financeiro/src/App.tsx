@@ -17,6 +17,7 @@ import Bens from "./views/Bens";
 import ApostasPainel from "./views/ApostasPainel";
 import TipsterPainel from "./views/TipsterPainel";
 import ExtratosBancarios from "./views/ExtratosBancarios";
+import TelegramGastos from "./views/TelegramGastos";
 import PainelGeral from "./views/PainelGeral";
 import { usePainelGeral } from "./hooks/usePainelGeral";
 import {
@@ -25,7 +26,7 @@ import {
   Shield, Target, TrendingUp, CreditCard,
   BedDouble, Trees, BarChart2, Briefcase, Coins,
   Moon, Sun, Eye, EyeOff, Menu, X,
-  LayoutDashboard, LogOut,
+  LayoutDashboard, LogOut, Send,
 } from "lucide-react";
 
 export default function App() {
@@ -95,6 +96,7 @@ export default function App() {
     { id: "entradas", label: "Entradas", icon: <TrendingUp size={13}/> },
     { id: "saidas",   label: "Saídas",   icon: <CreditCard size={13}/> },
     { id: "bancos",   label: "Bancos",   icon: <FileText size={13}/> },
+    { id: "telegram", label: "Telegram", icon: <Send size={13}/> },
   ];
 
   function selecionarSubImovel(sub: string)       { setSubAbaImovel(sub);       setAbaAtiva("imoveis");       setMenuImovelAberto(false); }
@@ -302,6 +304,7 @@ export default function App() {
           {abaAtiva === "pessoal" && subAbaPessoal === "entradas"   && <EntradasPessoais />}
           {abaAtiva === "pessoal" && subAbaPessoal === "saidas"     && <SaidasPainel />}
           {abaAtiva === "pessoal" && subAbaPessoal === "bancos"     && <ExtratosBancarios />}
+          {abaAtiva === "pessoal" && subAbaPessoal === "telegram"   && <TelegramGastos />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "acoes"       && <CarteiraInvestimentos />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "consorcios"  && <Consorcios />}
           {abaAtiva === "investimentos" && subAbaInvestimento === "caixinhas"   && <Caixinhas onTotalCalculado={painel.setTotalCaixinhas} />}
