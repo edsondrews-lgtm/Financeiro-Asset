@@ -1,6 +1,8 @@
 // Webhook do Telegram: recebe foto de cupom ou texto ("posto tigrinho combustível 150"),
-// manda pro Gemini extrair valor/categoria/descrição, e responde no chat pedindo
-// confirmação (botões inline) antes de gravar em pessoal_saidas.
+// manda pro Gemini extrair valor/categoria/descrição (e itens, se for cupom de mercado),
+// e responde no chat pedindo confirmação (botões inline) antes de gravar em
+// telegram_gastos — tabela separada de pessoal_saidas pra não duplicar com
+// lançamentos de cartão/fatura.
 //
 // Deploy: já acontece junto com o resto do app no Vercel (é só um arquivo em api/).
 // URL final: https://SEU-DOMINIO.vercel.app/api/telegram-webhook
@@ -38,8 +40,15 @@ Categorias válidas (escolha exatamente uma): ${CATEGORIAS.join(", ")}.
 Use "Mercado" para compras de supermercado, "Transporte" para combustível/posto/uber,
 "Supérfluos" para itens não essenciais de baixo valor que não se encaixem melhor em outra categoria.
 
+"descricao" deve ser um resumo específico e legível do que foi comprado, não genérico.
+Exemplo bom: "Mercado: hortifruti, carnes e bebidas". Exemplo ruim: "Mercado".
+
+Se for uma foto de cupom com vários produtos, preencha também "itens": uma lista com o
+nome de cada produto identificado (best-effort, sem precisar do preço individual).
+Se for um gasto único (ex: combustível, uma assinatura), deixe "itens" como null.
+
 Responda APENAS com um JSON, sem markdown, no formato:
-{"descricao": string, "categoria": string, "valor": number, "data_gasto": "YYYY-MM-DD" ou null}
+{"descricao": string, "categoria": string, "valor": number, "data_gasto": "YYYY-MM-DD" ou null, "itens": string[] ou null}
 
 Se não conseguir identificar um valor em reais com confiança, responda:
 {"erro": "motivo curto"}`;
@@ -127,10 +136,15 @@ export default async function handler(req: any, res: any) {
       const valor = Number(parsed.valor);
       const categoria = CATEGORIAS.includes(parsed.categoria as string) ? parsed.categoria : "Outros";
       const dataGasto = (parsed.data_gasto as string) || new Date().toISOString().split("T")[0];
+      const itens = Array.isArray(parsed.itens) ? parsed.itens : null;
+
+      const listaItens = itens && itens.length > 0
+        ? "\n" + itens.map((i) => `• ${i}`).join("\n")
+        : "";
 
       const enviado = await telegramCall("sendMessage", {
         chat_id: chatId,
-        text: `${parsed.descricao}\n${fmtBRL(valor)} · ${categoria} · ${dataGasto}\n\nConfirma?`,
+        text: `${parsed.descricao}\n${fmtBRL(valor)} · ${categoria} · ${dataGasto}${listaItens}\n\nConfirma?`,
         reply_markup: {
           inline_keyboard: [[
             { text: "✅ Confirmar", callback_data: "confirmar" },
@@ -146,6 +160,7 @@ export default async function handler(req: any, res: any) {
         categoria,
         valor,
         data_gasto: dataGasto,
+        itens,
       });
     }
 
@@ -162,13 +177,14 @@ export default async function handler(req: any, res: any) {
         .maybeSingle();
 
       if (pendente && cq.data === "confirmar") {
-        await supabase.from("pessoal_saidas").insert({
+        await supabase.from("telegram_gastos").insert({
           descricao: pendente.descricao,
           categoria: pendente.categoria,
           valor: pendente.valor,
           data_gasto: pendente.data_gasto,
-          periodicidade: "Único",
-          origem: "telegram",
+          itens: pendente.itens,
+          chat_id: pendente.chat_id,
+          message_id: pendente.message_id,
         });
         await supabase.from("telegram_pendentes").delete().eq("id", pendente.id);
         await telegramCall("editMessageText", { chat_id: chatId, message_id: messageId, text: "✅ Registrado!" });
