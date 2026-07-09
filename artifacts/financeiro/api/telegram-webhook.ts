@@ -5,20 +5,24 @@
 // Deploy: já acontece junto com o resto do app no Vercel (é só um arquivo em api/).
 // URL final: https://SEU-DOMINIO.vercel.app/api/telegram-webhook
 //
-// Variáveis de ambiente necessárias (Vercel → Project Settings → Environment Variables):
-//   TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, TELEGRAM_WEBHOOK_SECRET,
-//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-// (as duas últimas NÃO são as VITE_* usadas no frontend — pegue a Service Role Key
-// em Project Settings → API no Supabase; ela nunca deve ir para o bundle do app.)
+// Variáveis de ambiente novas, que precisam ser cadastradas no Vercel
+// (Project Settings → Environment Variables):
+//   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY
+// (a Service Role Key pega em Project Settings → API no Supabase; ela nunca
+// deve ir para o bundle do app, por isso não tem prefixo VITE_.)
+//
+// URL do Supabase e chave do Gemini são reaproveitadas das VITE_* que já
+// existem — o prefixo VITE_ só afeta o que o build do frontend embute no
+// navegador; no backend, toda variável de ambiente fica acessível igual.
 
 import { createClient } from "@supabase/supabase-js";
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET!;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+const GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY!;
 
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
+  process.env.VITE_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
