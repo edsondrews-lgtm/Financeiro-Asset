@@ -2,13 +2,19 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Send, Calendar, ChevronLeft, ChevronRight, Trash2, ShoppingBag } from 'lucide-react';
 
+interface ItemGasto {
+  nome: string;
+  categoria: string;
+}
+
 interface GastoTelegram {
   id: string;
   descricao: string;
   categoria: string;
   valor: number;
   data_gasto: string;
-  itens: string[] | null;
+  estabelecimento: string | null;
+  itens: ItemGasto[] | null;
   created_at: string;
 }
 
@@ -160,14 +166,22 @@ export default function TelegramGastos() {
                   </div>
                   <p className={`text-[11px] font-semibold mt-0.5 ${cfg.color}`}>
                     {g.categoria} · {new Date(g.data_gasto + 'T12:00:00').toLocaleDateString('pt-BR')}
+                    {g.estabelecimento && <> · 📍 {g.estabelecimento}</>}
                   </p>
                   {g.itens && g.itens.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {g.itens.map((item, i) => (
-                        <span key={i} className="text-[10px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-full px-2 py-0.5">
-                          {item}
-                        </span>
-                      ))}
+                      {g.itens.map((item, i) => {
+                        const itemCfg = CATEGORIA_CONFIG[item.categoria] ?? CATEGORIA_CONFIG['Outros'];
+                        return (
+                          <span key={i}
+                            className={`text-[10px] font-semibold ${itemCfg.color} ${itemCfg.bg} border border-slate-100 rounded-full px-2 py-0.5 flex items-center gap-1`}
+                            title={item.categoria}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: itemCfg.dot }} />
+                            {item.nome}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -34,21 +34,30 @@ const CATEGORIAS = [
 ];
 
 const PROMPT = `Você é um assistente que extrai dados de gastos pessoais em português do Brasil,
-a partir de uma foto de cupom/nota fiscal ou de uma mensagem de texto curta.
+a partir de uma foto de cupom/nota fiscal ou de uma mensagem de texto curta — muitas vezes
+escrita rápido, sem pontuação, tipo nota solta (ex: "salgadinho energetico posto tigrinho vinte reais").
+Interprete números por extenso normalmente (ex: "vinte reais" = 20).
 
-Categorias válidas (escolha exatamente uma): ${CATEGORIAS.join(", ")}.
-Use "Mercado" para compras de supermercado, "Transporte" para combustível/posto/uber,
-"Supérfluos" para itens não essenciais de baixo valor que não se encaixem melhor em outra categoria.
+Categorias válidas (escolha exatamente uma para cada item, e uma "principal" pro gasto todo):
+${CATEGORIAS.join(", ")}.
+Use "Mercado" só quando não der pra separar por tipo de produto. "Transporte" pra combustível/
+posto/uber. "Moradia" pra produtos de limpeza/uso doméstico. "Supérfluos" pra itens não
+essenciais que não se encaixem melhor em outra categoria.
 
 "descricao" deve ser um resumo específico e legível do que foi comprado, não genérico.
 Exemplo bom: "Mercado: hortifruti, carnes e bebidas". Exemplo ruim: "Mercado".
 
-Se for uma foto de cupom com vários produtos, preencha também "itens": uma lista com o
-nome de cada produto identificado (best-effort, sem precisar do preço individual).
+"estabelecimento": nome do local/loja/posto, se identificável (ex: "Posto Tigrinho"). Senão, null.
+
+Se for uma foto de cupom com vários produtos, ou uma mensagem citando mais de um item, preencha
+"itens": uma lista de {"nome": string, "categoria": string}, categorizando CADA item individualmente
+(um cupom de mercado pode ter limpeza + alimentação + supérfluos misturados — separe certo).
+Nesse caso, "categoria" no nível principal deve ser a categoria predominante entre os itens.
 Se for um gasto único (ex: combustível, uma assinatura), deixe "itens" como null.
 
 Responda APENAS com um JSON, sem markdown, no formato:
-{"descricao": string, "categoria": string, "valor": number, "data_gasto": "YYYY-MM-DD" ou null, "itens": string[] ou null}
+{"descricao": string, "categoria": string, "valor": number, "data_gasto": "YYYY-MM-DD" ou null,
+ "estabelecimento": string ou null, "itens": [{"nome": string, "categoria": string}] ou null}
 
 Se não conseguir identificar um valor em reais com confiança, responda:
 {"erro": "motivo curto"}`;
@@ -136,15 +145,23 @@ export default async function handler(req: any, res: any) {
       const valor = Number(parsed.valor);
       const categoria = CATEGORIAS.includes(parsed.categoria as string) ? parsed.categoria : "Outros";
       const dataGasto = (parsed.data_gasto as string) || new Date().toISOString().split("T")[0];
-      const itens = Array.isArray(parsed.itens) ? parsed.itens : null;
+      const estabelecimento = (parsed.estabelecimento as string) || null;
+      const itens: { nome: string; categoria: string }[] | null =
+        Array.isArray(parsed.itens)
+          ? parsed.itens.map((i: any) => ({
+              nome: i.nome,
+              categoria: CATEGORIAS.includes(i.categoria) ? i.categoria : "Outros",
+            }))
+          : null;
 
       const listaItens = itens && itens.length > 0
-        ? "\n" + itens.map((i) => `• ${i}`).join("\n")
+        ? "\n" + itens.map((i) => `• ${i.nome} (${i.categoria})`).join("\n")
         : "";
+      const linhaEstabelecimento = estabelecimento ? `\n📍 ${estabelecimento}` : "";
 
       const enviado = await telegramCall("sendMessage", {
         chat_id: chatId,
-        text: `${parsed.descricao}\n${fmtBRL(valor)} · ${categoria} · ${dataGasto}${listaItens}\n\nConfirma?`,
+        text: `${parsed.descricao}\n${fmtBRL(valor)} · ${categoria} · ${dataGasto}${linhaEstabelecimento}${listaItens}\n\nConfirma?`,
         reply_markup: {
           inline_keyboard: [[
             { text: "✅ Confirmar", callback_data: "confirmar" },
@@ -160,6 +177,7 @@ export default async function handler(req: any, res: any) {
         categoria,
         valor,
         data_gasto: dataGasto,
+        estabelecimento,
         itens,
       });
     }
@@ -182,6 +200,7 @@ export default async function handler(req: any, res: any) {
           categoria: pendente.categoria,
           valor: pendente.valor,
           data_gasto: pendente.data_gasto,
+          estabelecimento: pendente.estabelecimento,
           itens: pendente.itens,
           chat_id: pendente.chat_id,
           message_id: pendente.message_id,
