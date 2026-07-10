@@ -64,6 +64,7 @@ export default function TelegramGastos() {
     const { data } = await supabase
       .from('telegram_gastos')
       .select('*')
+      .eq('reconciliado', false)
       .order('data_gasto', { ascending: false })
       .order('created_at', { ascending: false });
     setGastos(data || []);
