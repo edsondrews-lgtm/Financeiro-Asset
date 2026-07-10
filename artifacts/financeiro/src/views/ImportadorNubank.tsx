@@ -135,7 +135,6 @@ export default function ImportadorNubank({ cartoes, onImportSucess }: { cartoes:
 
       const jaUsados = new Set<string>();
       for (const item of itens) {
-        if (item.valor > 0) continue; // gasto no cartão vem negativo no CSV
         const match = encontrarMatchTelegram(item.data_gasto, item.valor, telegramPendentes, jaUsados);
         if (match) {
           item.matchTelegram = match;
