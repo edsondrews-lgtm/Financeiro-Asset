@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Send, Calendar, ChevronLeft, ChevronRight, Trash2, ShoppingBag, Pencil, X } from 'lucide-react';
+import { Send, Calendar, ChevronLeft, ChevronRight, Trash2, ShoppingBag, Pencil, X, Link2 } from 'lucide-react';
 
 interface ItemGasto {
   nome: string;
@@ -16,7 +16,10 @@ interface GastoTelegram {
   estabelecimento: string | null;
   itens: ItemGasto[] | null;
   created_at: string;
+  reconciliado: boolean;
 }
+
+type FiltroStatus = 'todos' | 'pendentes' | 'reconciliados';
 
 const CATEGORIA_CONFIG: Record<string, { color: string; bg: string; dot: string }> = {
   Investimento: { color: 'text-violet-700', bg: 'bg-violet-50', dot: '#7C3AED' },
@@ -158,6 +161,7 @@ export default function TelegramGastos() {
   const [gastos, setGastos] = useState<GastoTelegram[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [editando, setEditando] = useState<GastoTelegram | null>(null);
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todos');
   const [mesFiltro, setMesFiltro] = useState(() => {
     const hoje = new Date();
     return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
@@ -170,7 +174,6 @@ export default function TelegramGastos() {
     const { data } = await supabase
       .from('telegram_gastos')
       .select('*')
-      .eq('reconciliado', false)
       .order('data_gasto', { ascending: false })
       .order('created_at', { ascending: false });
     setGastos(data || []);
@@ -182,7 +185,10 @@ export default function TelegramGastos() {
     setGastos(g => g.filter(x => x.id !== id));
   }
 
-  const doMes = gastos.filter(g => g.data_gasto?.startsWith(mesFiltro));
+  const porStatus = filtroStatus === 'todos' ? gastos
+    : filtroStatus === 'pendentes' ? gastos.filter(g => !g.reconciliado)
+    : gastos.filter(g => g.reconciliado);
+  const doMes = porStatus.filter(g => g.data_gasto?.startsWith(mesFiltro));
   const total = doMes.reduce((s, g) => s + Number(g.valor), 0);
 
   const porCategoria = Object.entries(
@@ -216,6 +222,24 @@ export default function TelegramGastos() {
             <ChevronRight size={14} />
           </button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-1 shadow-sm w-fit">
+        {([
+          { key: 'todos', label: 'Todos' },
+          { key: 'pendentes', label: 'Pendentes' },
+          { key: 'reconciliados', label: 'Cruzados c/ fatura' },
+        ] as { key: FiltroStatus; label: string }[]).map(op => (
+          <button
+            key={op.key}
+            onClick={() => setFiltroStatus(op.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              filtroStatus === op.key ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-slate-700'
+            }`}
+          >
+            {op.label}
+          </button>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -262,7 +286,7 @@ export default function TelegramGastos() {
           doMes.map(g => {
             const cfg = CATEGORIA_CONFIG[g.categoria] ?? CATEGORIA_CONFIG['Outros'];
             return (
-              <div key={g.id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-start gap-3 group">
+              <div key={g.id} className={`bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-start gap-3 group ${g.reconciliado ? 'opacity-60' : ''}`}>
                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${cfg.bg}`}>
                   <span className="w-2 h-2 rounded-full" style={{ background: cfg.dot }} />
                 </span>
@@ -275,6 +299,12 @@ export default function TelegramGastos() {
                     {g.categoria} · {new Date(g.data_gasto + 'T12:00:00').toLocaleDateString('pt-BR')}
                     {g.estabelecimento && <> · 📍 {g.estabelecimento}</>}
                   </p>
+                  {g.reconciliado && (
+                    <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100 rounded-full px-2 py-0.5">
+                      <Link2 size={10} />
+                      Cruzado com fatura
+                    </span>
+                  )}
                   {g.itens && g.itens.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {g.itens.map((item, i) => {
@@ -292,22 +322,24 @@ export default function TelegramGastos() {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button
-                    onClick={() => setEditando(g)}
-                    className="text-slate-300 hover:text-sky-500"
-                    title="Editar"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => excluir(g.id)}
-                    className="text-slate-300 hover:text-rose-500"
-                    title="Excluir"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {!g.reconciliado && (
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <button
+                      onClick={() => setEditando(g)}
+                      className="text-slate-300 hover:text-sky-500"
+                      title="Editar"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => excluir(g.id)}
+                      className="text-slate-300 hover:text-rose-500"
+                      title="Excluir"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
