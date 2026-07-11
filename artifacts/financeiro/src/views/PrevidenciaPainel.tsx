@@ -75,8 +75,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const SALDO_ATUAL = 51082.49; // saldo confirmado Mai/2026
-
 // ── componente principal ──────────────────────────────────────────────────────
 const formAp0  = { competencia: mesAtualYM(), valor: '', tipo: 'BASICA', cotas: '', observacao: '' };
 const formRnd0 = { competencia: mesAtualYM(), valor: '', saldo_final: '', cotas_total: '', observacao: '' };
@@ -188,12 +186,13 @@ export default function PrevidenciaPainel() {
   // ── cálculos base ─────────────────────────────────────────────────────────
   const totalAportado = aportes.reduce((a, r) => a + Number(r.valor), 0);
   const totalRendido  = rendimentos.reduce((a, r) => a + Number(r.valor), 0);
+  const saldoAtual     = totalAportado + totalRendido;
   const aporteAtual   = aportes.length > 0 ? Number(aportes[aportes.length - 1].valor) : 263.62;
 
   const rend12 = rendimentos.slice(-12);
   const rendMedio = rend12.length > 0
     ? rend12.reduce((a, r) => a + Number(r.valor), 0) / rend12.length : 0;
-  const taxaMensalEst = SALDO_ATUAL > 0 ? rendMedio / SALDO_ATUAL : 0.008;
+  const taxaMensalEst = saldoAtual > 0 ? rendMedio / saldoAtual : 0.008;
 
   // marco: mês em que rendimento passou a superar o aporte
   let marcoMes = '';
@@ -255,8 +254,8 @@ export default function PrevidenciaPainel() {
   const extraAnual= parseFloat(simAporteExtra) || 0;
   const anosAlvo  = parseFloat(simAnos) || 0;
 
-  const mesesSemExtra = mesesParaMeta(SALDO_ATUAL, aporteAtual, 0, taxaMensalEst, meta);
-  const mesesComExtra = mesesParaMeta(SALDO_ATUAL, aporteAtual, extraAnual, taxaMensalEst, meta);
+  const mesesSemExtra = mesesParaMeta(saldoAtual, aporteAtual, 0, taxaMensalEst, meta);
+  const mesesComExtra = mesesParaMeta(saldoAtual, aporteAtual, extraAnual, taxaMensalEst, meta);
   const diferencaMeses = mesesSemExtra - mesesComExtra;
 
   // quanto extra por ano pra chegar em X anos
@@ -265,7 +264,7 @@ export default function PrevidenciaPainel() {
     const mesesAlvo = anos * 12;
     let extra = 0;
     for (let tentativa = 0; tentativa <= 100000; tentativa += 100) {
-      if (mesesParaMeta(SALDO_ATUAL, aporteAtual, tentativa, taxaMensalEst, meta) <= mesesAlvo) {
+      if (mesesParaMeta(saldoAtual, aporteAtual, tentativa, taxaMensalEst, meta) <= mesesAlvo) {
         extra = tentativa; break;
       }
     }
@@ -274,12 +273,12 @@ export default function PrevidenciaPainel() {
   const extraNec = anosAlvo > 0 ? extraNecessario(anosAlvo) : 0;
 
   // projeções para o gráfico do simulador
-  const projSemExtra   = projetarSaldo(SALDO_ATUAL, aporteAtual, 0,           taxaMensalEst, Math.min(mesesSemExtra + 12, 600));
+  const projSemExtra   = projetarSaldo(saldoAtual, aporteAtual, 0,           taxaMensalEst, Math.min(mesesSemExtra + 12, 600));
   const projComExtra   = extraAnual > 0
-    ? projetarSaldo(SALDO_ATUAL, aporteAtual, extraAnual, taxaMensalEst, Math.min(mesesSemExtra + 12, 600))
+    ? projetarSaldo(saldoAtual, aporteAtual, extraAnual, taxaMensalEst, Math.min(mesesSemExtra + 12, 600))
     : [];
-  const projOtimista   = projetarSaldo(SALDO_ATUAL, aporteAtual, 0, taxaMensalEst * 1.3, Math.min(mesesSemExtra + 12, 600));
-  const projPessimista = projetarSaldo(SALDO_ATUAL, aporteAtual, 0, taxaMensalEst * 0.7, Math.min(mesesSemExtra + 12, 600));
+  const projOtimista   = projetarSaldo(saldoAtual, aporteAtual, 0, taxaMensalEst * 1.3, Math.min(mesesSemExtra + 12, 600));
+  const projPessimista = projetarSaldo(saldoAtual, aporteAtual, 0, taxaMensalEst * 0.7, Math.min(mesesSemExtra + 12, 600));
 
   // mescla os cenários num array para o gráfico
   const maxLen = Math.max(projSemExtra.length, projOtimista.length, projPessimista.length);
@@ -329,8 +328,8 @@ export default function PrevidenciaPainel() {
   })();
 
   const ultComp = dadosComparativo[dadosComparativo.length - 1];
-  const ganhoVsCDI  = ultComp ? SALDO_ATUAL - ultComp.saldoCDI  : 0;
-  const ganhoVsIPCA = ultComp ? SALDO_ATUAL - ultComp.saldoIPCA : 0;
+  const ganhoVsCDI  = ultComp ? saldoAtual - ultComp.saldoCDI  : 0;
+  const ganhoVsIPCA = ultComp ? saldoAtual - ultComp.saldoIPCA : 0;
 
   // ranking anos por rendimento
   const rankingAnos = (() => {
@@ -390,8 +389,8 @@ export default function PrevidenciaPainel() {
           <div className="space-y-5">
             {/* hero */}
             <div className="bg-gradient-to-br from-violet-700 to-indigo-700 rounded-2xl p-6 text-white shadow-xl">
-              <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mb-2">Saldo atual · Maio 2026</p>
-              <p className="text-4xl font-black tracking-tight privado">R$ {fmtBRL(SALDO_ATUAL)}</p>
+              <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mb-2">Saldo atual · {labelMesYM(mesAtualYM())}</p>
+              <p className="text-4xl font-black tracking-tight privado">R$ {fmtBRL(saldoAtual)}</p>
               <div className="grid grid-cols-3 gap-4 mt-5">
                 <div>
                   <p className="text-[10px] opacity-60 uppercase tracking-widest mb-1">Total aportado</p>
@@ -458,11 +457,11 @@ export default function PrevidenciaPainel() {
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2.5 mb-2">
                 <div className="h-2.5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-400 transition-all"
-                  style={{ width: `${Math.min(100, (SALDO_ATUAL / 1000000) * 100)}%` }}/>
+                  style={{ width: `${Math.min(100, (saldoAtual / 1000000) * 100)}%` }}/>
               </div>
               <div className="flex justify-between text-[10px] font-semibold text-slate-400">
-                <span className="privado">R$ {fmtBRL(SALDO_ATUAL)} hoje</span>
-                <span>{((SALDO_ATUAL / 1000000) * 100).toFixed(1)}% da meta</span>
+                <span className="privado">R$ {fmtBRL(saldoAtual)} hoje</span>
+                <span>{((saldoAtual / 1000000) * 100).toFixed(1)}% da meta</span>
                 <span>R$ 1.000.000</span>
               </div>
             </div>
@@ -544,7 +543,7 @@ export default function PrevidenciaPainel() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Seu fundo (real)</p>
-                    <p className="text-2xl font-black text-violet-700 privado">R$ {fmtBRL(SALDO_ATUAL)}</p>
+                    <p className="text-2xl font-black text-violet-700 privado">R$ {fmtBRL(saldoAtual)}</p>
                     <p className="text-[10px] text-slate-400 mt-1">saldo atual confirmado</p>
                   </div>
                   <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
@@ -729,9 +728,9 @@ export default function PrevidenciaPainel() {
             {/* explicação dos cenários */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Pessimista',  cor: '#EF4444', desc: `Taxa ${fmtPct(taxaMensalEst * 70)}/mês — fundo rende 30% menos que a média`, m: mesesParaMeta(SALDO_ATUAL, aporteAtual, 0, taxaMensalEst * 0.7, meta) },
+                { label: 'Pessimista',  cor: '#EF4444', desc: `Taxa ${fmtPct(taxaMensalEst * 70)}/mês — fundo rende 30% menos que a média`, m: mesesParaMeta(saldoAtual, aporteAtual, 0, taxaMensalEst * 0.7, meta) },
                 { label: 'Realista',    cor: '#7C3AED', desc: `Taxa ${fmtPct(taxaMensalEst * 100)}/mês — baseada nos últimos 12 meses reais`, m: mesesSemExtra },
-                { label: 'Otimista',   cor: '#10B981', desc: `Taxa ${fmtPct(taxaMensalEst * 130)}/mês — fundo rende 30% acima da média`, m: mesesParaMeta(SALDO_ATUAL, aporteAtual, 0, taxaMensalEst * 1.3, meta) },
+                { label: 'Otimista',   cor: '#10B981', desc: `Taxa ${fmtPct(taxaMensalEst * 130)}/mês — fundo rende 30% acima da média`, m: mesesParaMeta(saldoAtual, aporteAtual, 0, taxaMensalEst * 1.3, meta) },
               ].map(c => (
                 <div key={c.label} className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
