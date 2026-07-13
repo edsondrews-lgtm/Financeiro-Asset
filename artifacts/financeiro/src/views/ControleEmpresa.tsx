@@ -366,7 +366,7 @@ export default function ControleEmpresa() {
                   <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ações</span>
                 </div>
                 {notasFiltradas.map(nota => (
-                  <div key={nota.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50/60 transition-colors">
+                  <div key={nota.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50 transition-colors">
                     <span className="col-span-1 text-xs text-slate-500 font-semibold">{formatarData(nota.data_emissao)}</span>
                     <span className="col-span-1">
                       <span className="inline-flex items-center px-2 py-1 bg-slate-100 rounded-lg text-[10px] font-black text-slate-600 font-mono">{nota.numero_nota}</span>
@@ -414,7 +414,7 @@ export default function ControleEmpresa() {
                   <span className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ações</span>
                 </div>
                 {despesasFiltradas.map(desp => (
-                  <div key={desp.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50/60 transition-colors">
+                  <div key={desp.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50 transition-colors">
                     <div className="col-span-2">
                       <span className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide ${TIPO_CORES[desp.tipo] || 'bg-slate-100 text-slate-600'}`}>{desp.tipo.replace('_',' ')}</span>
                     </div>
@@ -475,7 +475,7 @@ export default function ControleEmpresa() {
                   const semDados = fatM === 0;
 
                   return (
-                    <div key={mKey} className={`grid grid-cols-12 px-6 py-3.5 items-center transition-colors ${isAtivo ? 'bg-blue-50/60' : 'hover:bg-slate-50/60'} ${semDados ? 'opacity-40' : ''}`}>
+                    <div key={mKey} className={`grid grid-cols-12 px-6 py-3.5 items-center transition-colors ${isAtivo ? 'bg-blue-50/60' : 'hover:bg-slate-50'} ${semDados ? 'opacity-40' : ''}`}>
                       <div className="col-span-2 flex items-center gap-2">
                         <span className={`text-xs font-black ${isAtivo ? 'text-blue-700' : 'text-slate-700'}`}>{MESES_CURTOS[Number(mKey)-1]}</span>
                         {isAtivo && <span className="text-[9px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-md">ATU</span>}

@@ -378,7 +378,7 @@ export default function EntradasPessoais() {
                   {entradas.map(e => {
                     const ts = getTipoCor(e.tipo);
                     return (
-                      <tr key={e.id} className="hover:bg-slate-50/60 transition-colors group/row">
+                      <tr key={e.id} className="hover:bg-slate-50 transition-colors group/row">
                         <td className="py-3 text-[11px] text-slate-400 font-medium pr-3">{formatarData(e.data_entrada)}</td>
                         <td className="py-3 pr-3">
                           <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold ${ts.bg} ${ts.text}`}>{e.tipo}</span>

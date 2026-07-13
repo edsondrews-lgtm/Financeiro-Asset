@@ -803,7 +803,7 @@ export default function PrevidenciaPainel() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {[...aportes].reverse().map(a => (
-                    <tr key={a.id} className="hover:bg-slate-50/60 transition-colors group/row">
+                    <tr key={a.id} className="hover:bg-slate-50 transition-colors group/row">
                       <td className="py-3 text-[11px] text-slate-500 font-semibold">{labelMesYM(competenciaToYM(a.competencia))}</td>
                       <td className="py-3">
                         <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold ${a.tipo === 'BASICA' ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -863,7 +863,7 @@ export default function PrevidenciaPainel() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {[...rendimentos].reverse().map(r => (
-                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors group/row">
+                    <tr key={r.id} className="hover:bg-slate-50 transition-colors group/row">
                       <td className="py-3 text-[11px] text-slate-500 font-semibold">{labelMesYM(competenciaToYM(r.competencia))}</td>
                       <td className={`py-3 text-xs font-black ${Number(r.valor) >= 0 ? 'text-emerald-600' : 'text-rose-600'} privado`}>
                         {Number(r.valor) >= 0 ? '+' : ''} R$ {fmtBRL(Number(r.valor))}

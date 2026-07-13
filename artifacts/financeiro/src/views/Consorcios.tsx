@@ -647,7 +647,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {parcelasPagina.map(p => (
-                  <tr key={p.id} className={`transition-colors hover:bg-slate-50/60 ${p.status === 'cancelada' ? 'opacity-40' : ''}`}>
+                  <tr key={p.id} className={`transition-colors hover:bg-slate-50 ${p.status === 'cancelada' ? 'opacity-40' : ''}`}>
                     <td className="px-5 py-3 font-bold text-slate-600 text-xs">#{p.numero_parcela}</td>
                     <td className="px-4 py-3 text-right text-slate-500 text-xs privado">{fmt(p.valor_fundo_comum)}</td>
                     <td className="px-4 py-3 text-right text-slate-500 text-xs privado">{fmt(p.valor_taxa_adm)}</td>

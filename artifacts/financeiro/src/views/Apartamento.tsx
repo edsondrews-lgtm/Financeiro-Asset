@@ -1122,7 +1122,7 @@ function HistoricoEconomia({ parcelas, cubEfetivoValor, imovel }: {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {dados.map(d => (
-                <tr key={d.parcela} className="hover:bg-slate-50/60">
+                <tr key={d.parcela} className="hover:bg-slate-50">
                   <td className="py-2 pr-3 font-bold text-amber-600">#{d.parcela}</td>
                   <td className="py-2 pr-3 text-slate-400">{new Date(d.data+'T12:00:00').toLocaleDateString('pt-BR')}</td>
                   <td className="py-2 pr-3 text-right text-slate-600">{d.pago.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
@@ -2480,7 +2480,7 @@ export default function Apartamento() {
                   const valorHoje = calcularParcela(imovel.parcelas_cubs, cubEfetivoValor)
                   const economia = Math.max(0, valorHoje - p.valor_pago)
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
+                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-3">
                         <span className={`px-3 py-1 rounded-full text-xs font-black ${p.adiantada ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                           Parcela {p.numero_parcela}
@@ -2534,7 +2534,7 @@ export default function Apartamento() {
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {(listaAtual as Reforco[]).map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-3 font-bold text-slate-700 text-xs">{r.descricao}</td>
                     <td className="px-4 py-3 text-right font-bold text-emerald-600">{fmt(r.valor_reais)}</td>
                     <td className="px-4 py-3 text-right text-xs text-slate-400">{r.valor_cubs ? `${r.valor_cubs} CUBs` : '—'}</td>
@@ -2582,7 +2582,7 @@ export default function Apartamento() {
                   .map((c, i) => {
                     const isAtual = i === 0 && paginaAtual === 1
                     return (
-                      <tr key={c.id} className={`hover:bg-slate-50/60 transition-colors ${isAtual ? 'bg-amber-50/50' : ''}`}>
+                      <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${isAtual ? 'bg-amber-50/50' : ''}`}>
                         <td className="px-5 py-3 font-black text-slate-800">{fmt(c.valor_cub)}</td>
                         <td className="px-4 py-3 text-xs text-slate-600 font-bold">{c.mes_ano}</td>
                         <td className="px-4 py-3 text-xs text-slate-400">{fmtDate(c.data_registro)}</td>
