@@ -45,19 +45,24 @@ const TIPO_CORES: Record<string, string> = {
   OUTROS: 'bg-slate-100 text-slate-600',
 };
 
+const hoje = new Date();
+const mesAtualStr = String(hoje.getMonth() + 1).padStart(2, '0');
+const anoAtualStr = String(hoje.getFullYear());
+const dataAtualStr = `${anoAtualStr}-${mesAtualStr}-${String(hoje.getDate()).padStart(2, '0')}`;
+
 export default function ControleEmpresa() {
   const [subAba, setSubAba] = useState('dashboard');
   const [loading, setLoading] = useState(false);
-  const [mesAtivo, setMesAtivo] = useState('05');
-  const [anoAtivo, setAnoAtivo] = useState('2026');
+  const [mesAtivo, setMesAtivo] = useState(mesAtualStr);
+  const [anoAtivo, setAnoAtivo] = useState(anoAtualStr);
   const [notas, setNotas] = useState<NotaFiscal[]>([]);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
-  const [fechamento, setFechamento] = useState<Fechamento>({ data_limite: '2026-05-28', horario_limite: '23:59', observacao: '' });
+  const [fechamento, setFechamento] = useState<Fechamento>({ data_limite: dataAtualStr, horario_limite: '23:59', observacao: '' });
   const [modalNota, setModalNota] = useState(false);
   const [modalDespesa, setModalDespesa] = useState(false);
   const [idEditando, setIdEditando] = useState<string | null>(null);
-  const [novaNota, setNovaNota] = useState({ numero_nota: '', data_emissao: '2026-05-29', tomador: '', servico: '', valor: '' });
-  const [novaDespesa, setNovaDespesa] = useState({ tipo: 'CONTABILIDADE', descricao: '', periodicidade: 'Mensal', recorrente: 'Não', valor: '', data_vencimento: '2026-05-29' });
+  const [novaNota, setNovaNota] = useState({ numero_nota: '', data_emissao: dataAtualStr, tomador: '', servico: '', valor: '' });
+  const [novaDespesa, setNovaDespesa] = useState({ tipo: 'CONTABILIDADE', descricao: '', periodicidade: 'Mensal', recorrente: 'Não', valor: '', data_vencimento: dataAtualStr });
 
   useEffect(() => { buscarDados(); }, []);
 
@@ -69,7 +74,7 @@ export default function ControleEmpresa() {
       const { data: d } = await supabase.from('empresa_despesas').select('*');
       if (d) setDespesas(d.map(item => ({ ...item, data_vencimento: item.data_vencimento || item.data || item.vencimento || '' })));
       const { data: f } = await supabase.from('empresa_controle_fechamento').select('*').order('id', { ascending: false }).limit(1);
-      if (f && f[0]) setFechamento({ data_limite: f[0].data_limite || '2026-05-28', horario_limite: (f[0].horario_limite || '23:59').substring(0, 5), observacao: f[0].observacao || '' });
+      if (f && f[0]) setFechamento({ data_limite: f[0].data_limite || dataAtualStr, horario_limite: (f[0].horario_limite || '23:59').substring(0, 5), observacao: f[0].observacao || '' });
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
 
