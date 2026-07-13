@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { CreditCard, DollarSign, TrendingUp, Plus, Pencil, Trash2, X, Calendar, ChevronLeft, ChevronRight, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { CreditCard, DollarSign, TrendingUp, Plus, Pencil, Trash2, X, Calendar, ChevronLeft, ChevronRight, SlidersHorizontal, ChevronDown, Tag } from 'lucide-react';
 import GraficoGastos from './GraficoGastos';
 import ImportadorNubank from './ImportadorNubank';
+import CategoriaManager from '../components/CategoriaManager';
+import { useCategorias } from '../hooks/useCategorias';
+import { corParaCategoria } from '../lib/categoriaFallback';
+import { navegarMes, formatMesLabel } from '../lib/mes';
 
 interface Cartao {
   id: string;
@@ -20,33 +24,6 @@ interface Gasto {
   data_gasto: string;
   cartao_id: string | null;
   periodicidade: string;
-}
-
-const CATEGORIA_CONFIG: Record<string, { color: string; bg: string; dot: string }> = {
-  Investimento: { color: 'text-violet-700', bg: 'bg-violet-50', dot: '#7C3AED' },
-  Moradia:      { color: 'text-sky-700',    bg: 'bg-sky-50',    dot: '#0284C7' },
-  Lazer:        { color: 'text-emerald-700',bg: 'bg-emerald-50',dot: '#059669' },
-  Vestuário:    { color: 'text-amber-700',  bg: 'bg-amber-50',  dot: '#D97706' },
-  Alimentação:  { color: 'text-rose-700',   bg: 'bg-rose-50',   dot: '#E11D48' },
-  Assinatura:   { color: 'text-indigo-700', bg: 'bg-indigo-50', dot: '#4338CA' },
-  Mercado:      { color: 'text-teal-700',   bg: 'bg-teal-50',   dot: '#0D9488' },
-  Supérfluos:   { color: 'text-pink-700',   bg: 'bg-pink-50',   dot: '#DB2777' },
-  Transporte:   { color: 'text-orange-700', bg: 'bg-orange-50', dot: '#EA580C' },
-  Saúde:        { color: 'text-cyan-700',   bg: 'bg-cyan-50',   dot: '#0891B2' },
-  Outros:       { color: 'text-slate-600',  bg: 'bg-slate-100', dot: '#64748B' },
-};
-
-const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-function navegarMes(atual: string, direcao: number): string {
-  const [ano, mes] = atual.split('-').map(Number);
-  const d = new Date(ano, mes - 1 + direcao, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatMesLabel(ym: string): string {
-  const [ano, mes] = ym.split('-').map(Number);
-  return `${MESES[mes - 1]} ${ano}`;
 }
 
 function fmtBRL(val: number): string {
@@ -101,19 +78,18 @@ function MetricCard({
 
 // ── Rank bar item ─────────────────────────────────────────────────────────────
 function RankItem({
-  pos, cat, val, max,
-}: { pos: number; cat: string; val: number; max: number }) {
-  const cfg = CATEGORIA_CONFIG[cat] ?? CATEGORIA_CONFIG['Outros'];
+  pos, cat, val, max, cor,
+}: { pos: number; cat: string; val: number; max: number; cor: string }) {
   const pct = max > 0 ? (val / max) * 100 : 0;
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-slate-50 last:border-0">
       <span className="text-[10px] text-slate-300 font-bold w-4 text-right shrink-0">{pos}</span>
-      <span className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${cfg.bg}`}>
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.dot }} />
+      <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ background: cor + '1a' }}>
+        <span className="w-1.5 h-1.5 rounded-full" style={{ background: cor }} />
       </span>
       <span className="text-xs font-semibold text-slate-700 flex-1 truncate">{cat}</span>
       <div className="w-16 h-1 rounded-full bg-slate-100 shrink-0">
-        <div className="h-1 rounded-full" style={{ width: `${pct}%`, background: cfg.dot }} />
+        <div className="h-1 rounded-full" style={{ width: `${pct}%`, background: cor }} />
       </div>
       <span className="text-xs font-bold text-slate-800 w-20 text-right shrink-0 privado">
         R$ {fmtBRL(val)}
@@ -124,6 +100,7 @@ function RankItem({
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function SaidasPainel() {
+  const { categorias, corPorNome, recarregar: recarregarCategorias } = useCategorias();
   const [subAba, setSubAba] = useState('geral');
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [gastos, setGastos] = useState<Gasto[]>([]);
@@ -135,6 +112,7 @@ export default function SaidasPainel() {
   });
   const [modalCartaoAberto, setModalCartaoAberto] = useState(false);
   const [modalSaidaAberto, setModalSaidaAberto] = useState(false);
+  const [modalCategoriasAberto, setModalCategoriasAberto] = useState(false);
   const [filtroCartao, setFiltroCartao] = useState('todos');
   const [editandoItem, setEditandoItem] = useState<any>(null);
   const [formCartao, setFormCartao] = useState({ nome_cartao: '', limite_total: '', dia_vencimento: '', dia_fechamento: '' });
@@ -325,7 +303,7 @@ export default function SaidasPainel() {
               {/* Donut + legend */}
               <div className="bg-white rounded-2xl border border-slate-100 p-5">
                 <p className="text-xs font-bold text-slate-700 mb-4">Distribuição por categoria</p>
-                <GraficoGastos gastos={gastos} />
+                <GraficoGastos gastos={gastos} corPorNome={corPorNome} />
               </div>
 
               {/* Ranking */}
@@ -336,7 +314,7 @@ export default function SaidasPainel() {
                   {rankingCats.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-8">Nenhum gasto no período</p>
                   ) : rankingCats.map(([cat, val], i) => (
-                    <RankItem key={cat} pos={i + 1} cat={cat} val={val} max={maxCat} />
+                    <RankItem key={cat} pos={i + 1} cat={cat} val={val} max={maxCat} cor={corParaCategoria(cat, corPorNome)} />
                   ))}
                 </div>
               </div>
@@ -445,15 +423,15 @@ export default function SaidasPainel() {
                       </tr>
                     ) : listaFiltrada.map(gasto => {
                       const cartaoVinculado = cartoes.find(c => c.id === gasto.cartao_id);
-                      const cfg = CATEGORIA_CONFIG[gasto.categoria] ?? CATEGORIA_CONFIG['Outros'];
+                      const cor = corParaCategoria(gasto.categoria, corPorNome);
                       return (
-                        <tr key={gasto.id} className="hover:bg-slate-50/60 transition-colors group/row">
+                        <tr key={gasto.id} className="hover:bg-slate-50 transition-colors group/row">
                           <td className="py-3 text-[11px] text-slate-400 font-medium">
                             {new Date(gasto.data_gasto).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                           </td>
                           <td className="py-3 text-xs text-slate-800 font-semibold">{gasto.descricao}</td>
                           <td className="py-3">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${cfg.bg} ${cfg.color}`}>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold" style={{ background: cor + '1a', color: cor }}>
                               {gasto.categoria}
                             </span>
                           </td>
@@ -533,9 +511,22 @@ export default function SaidasPainel() {
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Categoria">
-                    <select className={inputCls} value={formSaida.categoria} onChange={e => setFormSaida({ ...formSaida, categoria: e.target.value })}>
-                      {Object.keys(CATEGORIA_CONFIG).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <div className="flex items-center gap-1.5">
+                      <select className={inputCls} value={formSaida.categoria} onChange={e => setFormSaida({ ...formSaida, categoria: e.target.value })}>
+                        {!categorias.some(c => c.nome === formSaida.categoria) && formSaida.categoria && (
+                          <option value={formSaida.categoria}>{formSaida.categoria} (removida)</option>
+                        )}
+                        {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setModalCategoriasAberto(true)}
+                        title="Gerenciar categorias"
+                        className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                      >
+                        <Tag size={13} />
+                      </button>
+                    </div>
                   </Field>
                   <Field label="Valor (R$)">
                     <input required type="number" step="any" className={inputCls} placeholder="0,00" value={formSaida.valor} onChange={e => setFormSaida({ ...formSaida, valor: e.target.value })} />
@@ -565,6 +556,14 @@ export default function SaidasPainel() {
               </form>
             </div>
           </div>
+        )}
+
+        {/* ── Modal: Categorias ───────────────────────────────────────────── */}
+        {modalCategoriasAberto && (
+          <CategoriaManager
+            onFechar={() => setModalCategoriasAberto(false)}
+            onChange={recarregarCategorias}
+          />
         )}
 
       </div>

@@ -11,6 +11,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   // Pessoal
   const [entradasPF, setEntradasPF] = useState<any[]>([]);
   const [saidasPF,   setSaidasPF]   = useState<any[]>([]);
+  const [telegramPF, setTelegramPF] = useState<any[]>([]);
   // Investimentos / Patrimônio
   const [totalCaixinhas,  setTotalCaixinhas]  = useState(0); // vem via callback do Caixinhas.tsx (c/ rendimento CDI)
   const [listaCaixinhas,  setListaCaixinhas]  = useState<{ nome: string; valor_atual: number }[]>([]);
@@ -38,7 +39,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     setLoading(true);
     try {
       const [
-        rNotas, rDespesas, rEntradas, rSaidas,
+        rNotas, rDespesas, rEntradas, rSaidas, rTelegram,
         rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
         rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
@@ -48,6 +49,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
         supabase.from("entradas_pessoais").select("valor,data_entrada,tipo,descricao"),
         supabase.from("pessoal_saidas").select("valor,data_gasto,categoria"),
+        supabase.from("telegram_gastos").select("valor,data_gasto,categoria").eq("reconciliado", false),
         supabase.from("consorcios").select("valor_bem,descricao"),
         supabase.from("parcelas_calculadas").select("valor_total,data_vencimento").eq("status","pendente").order("data_vencimento",{ascending:true}).limit(1),
         supabase.from("imovel_cub").select("valor_cub").order("data_registro",{ascending:false}).limit(1),
@@ -68,6 +70,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
       if (rDespesas.data)   setDespesas(rDespesas.data);
       if (rEntradas.data)   setEntradasPF(rEntradas.data);
       if (rSaidas.data)     setSaidasPF(rSaidas.data);
+      if (rTelegram.data)   setTelegramPF(rTelegram.data);
       if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
       if (rCaixinhas.data && rCaixinhas.data.length > 0) {
@@ -156,6 +159,10 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   const saidasDoMes      = saidasPF.filter(s => s.data_gasto?.startsWith(prefixoDash));
   const totalSaidasMes   = saidasDoMes.reduce((s, g) => s + (Number(g.valor) || 0), 0);
   const saldoMes         = totalEntradasMes - totalSaidasMes;
+  // telegramPF já vem filtrado por reconciliado=false; aqui só recorta pro mês.
+  // Entra no ranking de categorias (visual/apresentacional) mas não em
+  // totalSaidasMes/saldoMes, que ficam de fora dessa correção por ora.
+  const telegramDoMes    = telegramPF.filter(t => t.data_gasto?.startsWith(prefixoDash));
 
   const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem)  || 0), 0);
   const totalBens = bens.reduce((s: number, b: any) => s + (Number(b.valor_estimado) || 0), 0);
@@ -167,7 +174,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   const faturamentoAno  = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
   const rankingCats = Object.entries(
-    saidasDoMes.reduce((acc: Record<string,number>, g: any) => ({
+    [...saidasDoMes, ...telegramDoMes].reduce((acc: Record<string,number>, g: any) => ({
       ...acc, [g.categoria||"Outros"]: (acc[g.categoria||"Outros"]||0) + (Number(g.valor)||0),
     }), {})
   ).sort((a, b) => b[1] - a[1]).slice(0, 4);
