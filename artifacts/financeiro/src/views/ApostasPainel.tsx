@@ -28,7 +28,7 @@ interface Toast {
   msg: string;
 }
 
-const CASAS = ['Granawin', 'BetandYou', 'BetLabel', 'WinWin', 'Bet365'];
+const CASAS = ['Granawin', 'BetandYou', 'BetLabel', 'WinWin', 'Bet365', 'BetSnipe'];
 
 const CASA_CFG: Record<string, { bg: string; text: string; accent: string; border: string; highlight: string }> = {
   'Granawin':  { bg: 'bg-emerald-600', text: 'text-white', accent: '#059669', border: 'border-emerald-200', highlight: '#05966915' },
@@ -36,6 +36,7 @@ const CASA_CFG: Record<string, { bg: string; text: string; accent: string; borde
   'BetLabel':  { bg: 'bg-violet-600',  text: 'text-white', accent: '#7c3aed', border: 'border-violet-200',  highlight: '#7c3aed15' },
   'WinWin':    { bg: 'bg-orange-600',  text: 'text-white', accent: '#EA580C', border: 'border-orange-200',  highlight: '#EA580C15' },
   'Bet365':    { bg: 'bg-sky-600',     text: 'text-white', accent: '#0284c7', border: 'border-sky-200',     highlight: '#0284c715' },
+  'BetSnipe':  { bg: 'bg-rose-600',    text: 'text-white', accent: '#e11d48', border: 'border-rose-200',    highlight: '#e11d4815' },
 };
 
 const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
