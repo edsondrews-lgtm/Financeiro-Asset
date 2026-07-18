@@ -443,7 +443,7 @@ export default function FGTSPainel() {
                         const cfg = getTipoCfg(l.tipo);
                         const isNeg = Number(l.valor) < 0;
                         return (
-                          <tr key={l.id} className="hover:bg-slate-50/60 transition-colors group/row">
+                          <tr key={l.id} className="hover:bg-slate-50 transition-colors group/row">
                             <td className="py-2.5 text-[11px] text-slate-400 font-medium pr-3 whitespace-nowrap">{fmtData(l.data)}</td>
                             <td className="py-2.5 pr-3">
                               <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>

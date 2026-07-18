@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Send, Calendar, ChevronLeft, ChevronRight, Trash2, ShoppingBag, Pencil, X, Link2 } from 'lucide-react';
+import { Send, Calendar, ChevronLeft, ChevronRight, Trash2, ShoppingBag, Pencil, X, Tag, Link2 } from 'lucide-react';
+import CategoriaManager from '../components/CategoriaManager';
+import { useCategorias, type Categoria } from '../hooks/useCategorias';
+import { corParaCategoria } from '../lib/categoriaFallback';
+import { navegarMes, formatMesLabel } from '../lib/mes';
+import { fmt } from '../lib/constants';
 
 interface ItemGasto {
   nome: string;
@@ -21,41 +26,12 @@ interface GastoTelegram {
 
 type FiltroStatus = 'todos' | 'pendentes' | 'reconciliados';
 
-const CATEGORIA_CONFIG: Record<string, { color: string; bg: string; dot: string }> = {
-  Investimento: { color: 'text-violet-700', bg: 'bg-violet-50', dot: '#7C3AED' },
-  Moradia:      { color: 'text-sky-700',    bg: 'bg-sky-50',    dot: '#0284C7' },
-  Lazer:        { color: 'text-emerald-700',bg: 'bg-emerald-50',dot: '#059669' },
-  Vestuário:    { color: 'text-amber-700',  bg: 'bg-amber-50',  dot: '#D97706' },
-  Alimentação:  { color: 'text-rose-700',   bg: 'bg-rose-50',   dot: '#E11D48' },
-  Assinatura:   { color: 'text-indigo-700', bg: 'bg-indigo-50', dot: '#4338CA' },
-  Mercado:      { color: 'text-teal-700',   bg: 'bg-teal-50',   dot: '#0D9488' },
-  Supérfluos:   { color: 'text-pink-700',   bg: 'bg-pink-50',   dot: '#DB2777' },
-  Transporte:   { color: 'text-orange-700', bg: 'bg-orange-50', dot: '#EA580C' },
-  Saúde:        { color: 'text-cyan-700',   bg: 'bg-cyan-50',   dot: '#0891B2' },
-  Outros:       { color: 'text-slate-600',  bg: 'bg-slate-100', dot: '#64748B' },
-};
-
-const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-function navegarMes(atual: string, direcao: number): string {
-  const [ano, mes] = atual.split('-').map(Number);
-  const d = new Date(ano, mes - 1 + direcao, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatMesLabel(ym: string): string {
-  const [ano, mes] = ym.split('-').map(Number);
-  return `${MESES[mes - 1]} ${ano}`;
-}
-
-function fmt(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function ModalEditarGasto({ gasto, onFechar, onSalvo }: {
+function ModalEditarGasto({ gasto, categorias, onFechar, onSalvo, onGerenciarCategorias }: {
   gasto: GastoTelegram;
+  categorias: Categoria[];
   onFechar: () => void;
   onSalvo: () => void;
+  onGerenciarCategorias: () => void;
 }) {
   const [form, setForm] = useState({
     descricao: gasto.descricao,
@@ -115,10 +91,18 @@ function ModalEditarGasto({ gasto, onFechar, onSalvo }: {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Categoria</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Categoria</label>
+                <button type="button" onClick={onGerenciarCategorias} className="text-slate-300 hover:text-sky-500" title="Gerenciar categorias">
+                  <Tag size={13} />
+                </button>
+              </div>
               <select value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-sky-400">
-                {Object.keys(CATEGORIA_CONFIG).map(c => <option key={c} value={c}>{c}</option>)}
+                {!categorias.some(c => c.nome === form.categoria) && form.categoria && (
+                  <option value={form.categoria}>{form.categoria} (removida)</option>
+                )}
+                {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
               </select>
             </div>
             <div>
@@ -158,9 +142,11 @@ function ModalEditarGasto({ gasto, onFechar, onSalvo }: {
 }
 
 export default function TelegramGastos() {
+  const { categorias, corPorNome, recarregar: recarregarCategorias } = useCategorias();
   const [gastos, setGastos] = useState<GastoTelegram[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [editando, setEditando] = useState<GastoTelegram | null>(null);
+  const [modalCategoriasAberto, setModalCategoriasAberto] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todos');
   const [mesFiltro, setMesFiltro] = useState(() => {
     const hoje = new Date();
@@ -255,15 +241,15 @@ export default function TelegramGastos() {
           ) : (
             <div className="space-y-2">
               {porCategoria.map(([cat, val]) => {
-                const cfg = CATEGORIA_CONFIG[cat] ?? CATEGORIA_CONFIG['Outros'];
+                const cor = corParaCategoria(cat, corPorNome);
                 return (
                   <div key={cat} className="flex items-center gap-3">
-                    <span className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${cfg.bg}`}>
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.dot }} />
+                    <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ background: cor + '1a' }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: cor }} />
                     </span>
                     <span className="text-xs font-semibold text-slate-700 w-28 truncate">{cat}</span>
                     <div className="flex-1 h-1.5 rounded-full bg-slate-100">
-                      <div className="h-1.5 rounded-full" style={{ width: `${(val / maxCat) * 100}%`, background: cfg.dot }} />
+                      <div className="h-1.5 rounded-full" style={{ width: `${(val / maxCat) * 100}%`, background: cor }} />
                     </div>
                     <span className="text-xs font-black text-slate-800 tabular-nums w-24 text-right privado">{fmt(val)}</span>
                   </div>
@@ -284,18 +270,18 @@ export default function TelegramGastos() {
           </div>
         ) : (
           doMes.map(g => {
-            const cfg = CATEGORIA_CONFIG[g.categoria] ?? CATEGORIA_CONFIG['Outros'];
+            const cor = corParaCategoria(g.categoria, corPorNome);
             return (
               <div key={g.id} className={`bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-start gap-3 group ${g.reconciliado ? 'opacity-60' : ''}`}>
-                <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${cfg.bg}`}>
-                  <span className="w-2 h-2 rounded-full" style={{ background: cfg.dot }} />
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ background: cor + '1a' }}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: cor }} />
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-bold text-slate-800 truncate">{g.descricao}</p>
                     <span className="text-sm font-black text-slate-800 tabular-nums shrink-0 privado">{fmt(Number(g.valor))}</span>
                   </div>
-                  <p className={`text-[11px] font-semibold mt-0.5 ${cfg.color}`}>
+                  <p className="text-[11px] font-semibold mt-0.5" style={{ color: cor }}>
                     {g.categoria} · {new Date(g.data_gasto + 'T12:00:00').toLocaleDateString('pt-BR')}
                     {g.estabelecimento && <> · 📍 {g.estabelecimento}</>}
                   </p>
@@ -308,13 +294,14 @@ export default function TelegramGastos() {
                   {g.itens && g.itens.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {g.itens.map((item, i) => {
-                        const itemCfg = CATEGORIA_CONFIG[item.categoria] ?? CATEGORIA_CONFIG['Outros'];
+                        const corItem = corParaCategoria(item.categoria, corPorNome);
                         return (
                           <span key={i}
-                            className={`text-[10px] font-semibold ${itemCfg.color} ${itemCfg.bg} border border-slate-100 rounded-full px-2 py-0.5 flex items-center gap-1`}
+                            className="text-[10px] font-semibold border border-slate-100 rounded-full px-2 py-0.5 flex items-center gap-1"
+                            style={{ color: corItem, background: corItem + '1a' }}
                             title={item.categoria}
                           >
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: itemCfg.dot }} />
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: corItem }} />
                             {item.nome}
                           </span>
                         );
@@ -349,8 +336,17 @@ export default function TelegramGastos() {
       {editando && (
         <ModalEditarGasto
           gasto={editando}
+          categorias={categorias}
           onFechar={() => setEditando(null)}
           onSalvo={() => { setEditando(null); buscar(); }}
+          onGerenciarCategorias={() => setModalCategoriasAberto(true)}
+        />
+      )}
+
+      {modalCategoriasAberto && (
+        <CategoriaManager
+          onFechar={() => setModalCategoriasAberto(false)}
+          onChange={recarregarCategorias}
         />
       )}
     </div>

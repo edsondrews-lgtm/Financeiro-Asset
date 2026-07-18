@@ -410,7 +410,7 @@ export default function CarteiraInvestimentos() {
                 {ativosFiltrados.map((ativo, i) => {
                   const peso = totalAtual > 0 ? ((ativo.valor_total ?? ativo.preco_medio * ativo.quantidade) / totalAtual) * 100 : 0;
                   return (
-                    <tr key={ativo.id} className="hover:bg-slate-50/60 transition-colors">
+                    <tr key={ativo.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CORES[i % CORES.length] }} />

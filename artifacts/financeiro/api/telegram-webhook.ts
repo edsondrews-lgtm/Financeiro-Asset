@@ -28,18 +28,29 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const CATEGORIAS = [
+// Fallback só pro caso da tabela `categorias` estar vazia/inacessível — em
+// operação normal, a lista vem do banco (buscarCategorias), então uma
+// categoria nova cadastrada pelo usuário já fica disponível pro bot sem
+// precisar de redeploy.
+const CATEGORIAS_FALLBACK = [
   "Investimento", "Moradia", "Lazer", "Vestuário", "Alimentação",
   "Assinatura", "Mercado", "Supérfluos", "Transporte", "Saúde", "Outros",
 ];
 
-const PROMPT = `Você é um assistente que extrai dados de gastos pessoais em português do Brasil,
+async function buscarCategorias(): Promise<string[]> {
+  const { data, error } = await supabase.from("categorias").select("nome").order("nome");
+  if (error || !data || data.length === 0) return CATEGORIAS_FALLBACK;
+  return data.map((c) => c.nome as string);
+}
+
+function montarPrompt(categorias: string[]): string {
+  return `Você é um assistente que extrai dados de gastos pessoais em português do Brasil,
 a partir de uma foto de cupom/nota fiscal ou de uma mensagem de texto curta — muitas vezes
 escrita rápido, sem pontuação, tipo nota solta (ex: "salgadinho energetico posto tigrinho vinte reais").
 Interprete números por extenso normalmente (ex: "vinte reais" = 20).
 
 Categorias válidas (escolha exatamente uma para cada item, e uma "principal" pro gasto todo):
-${CATEGORIAS.join(", ")}.
+${categorias.join(", ")}.
 Use "Mercado" só quando não der pra separar por tipo de produto. "Transporte" pra combustível/
 posto/uber. "Moradia" pra produtos de limpeza/uso doméstico. "Supérfluos" pra itens não
 essenciais que não se encaixem melhor em outra categoria.
@@ -61,6 +72,7 @@ Responda APENAS com um JSON, sem markdown, no formato:
 
 Se não conseguir identificar um valor em reais com confiança, responda:
 {"erro": "motivo curto"}`;
+}
 
 function fmtBRL(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -82,14 +94,14 @@ async function baixarArquivoTelegram(fileId: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function chamarGemini(parts: Record<string, unknown>[]) {
+async function chamarGemini(promptText: string, parts: Record<string, unknown>[]) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: PROMPT }, ...parts] }],
+        contents: [{ parts: [{ text: promptText }, ...parts] }],
         generationConfig: { responseMimeType: "application/json" },
       }),
     },
@@ -117,16 +129,18 @@ export default async function handler(req: any, res: any) {
     if (update.message) {
       const msg = update.message;
       const chatId = msg.chat.id;
+      const categorias = await buscarCategorias();
+      const promptText = montarPrompt(categorias);
 
       let parsed: Record<string, unknown>;
       if (msg.photo) {
         const maior = msg.photo[msg.photo.length - 1];
         const bytes = await baixarArquivoTelegram(maior.file_id);
-        parsed = await chamarGemini([
+        parsed = await chamarGemini(promptText, [
           { inline_data: { mime_type: "image/jpeg", data: bytes.toString("base64") } },
         ]);
       } else if (msg.text) {
-        parsed = await chamarGemini([{ text: msg.text }]);
+        parsed = await chamarGemini(promptText, [{ text: msg.text }]);
       } else {
         await telegramCall("sendMessage", {
           chat_id: chatId,
@@ -143,14 +157,14 @@ export default async function handler(req: any, res: any) {
       }
 
       const valor = Number(parsed.valor);
-      const categoria = CATEGORIAS.includes(parsed.categoria as string) ? parsed.categoria : "Outros";
+      const categoria = categorias.includes(parsed.categoria as string) ? parsed.categoria : "Outros";
       const dataGasto = (parsed.data_gasto as string) || new Date().toISOString().split("T")[0];
       const estabelecimento = (parsed.estabelecimento as string) || null;
       const itens: { nome: string; categoria: string }[] | null =
         Array.isArray(parsed.itens)
           ? parsed.itens.map((i: any) => ({
               nome: i.nome,
-              categoria: CATEGORIAS.includes(i.categoria) ? i.categoria : "Outros",
+              categoria: categorias.includes(i.categoria) ? i.categoria : "Outros",
             }))
           : null;
 

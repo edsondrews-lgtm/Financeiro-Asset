@@ -432,7 +432,7 @@ export default function CasaJardimMirante() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {listaAtual.map(a => (
-                <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
+                <tr key={a.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-5 py-3 text-xs font-bold text-slate-600">{fmtDate(a.data_pagamento)}</td>
                   <td className="px-4 py-3"><TipoBadge tipo={a.tipo} /></td>
                   <td className="px-4 py-3 text-right font-black text-emerald-600">{fmt(a.valor)}</td>
