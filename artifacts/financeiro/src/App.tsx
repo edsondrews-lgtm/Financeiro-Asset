@@ -14,8 +14,6 @@ import Caixinhas from "./views/Caixinhas";
 import PrevidenciaPainel from "./views/PrevidenciaPainel";
 import FGTSPainel from "./views/FGTSPainel";
 import Bens from "./views/Bens";
-import ApostasPainel from "./views/ApostasPainel";
-import TipsterPainel from "./views/TipsterPainel";
 import ExtratosBancarios from "./views/ExtratosBancarios";
 import TelegramGastos from "./views/TelegramGastos";
 import ParaOndeVaiPainel from "./views/ParaOndeVaiPainel";
@@ -24,7 +22,7 @@ import { usePainelGeral } from "./hooks/usePainelGeral";
 import {
   Building2, Home, Wallet, ChevronDown,
   PieChart, FileText, PiggyBank,
-  Shield, Target, TrendingUp, CreditCard,
+  Shield, TrendingUp, CreditCard,
   BedDouble, Trees, BarChart2, Briefcase, Coins,
   Moon, Sun, Eye, EyeOff, Menu, X,
   LayoutDashboard, LogOut, Send, Landmark,
@@ -75,8 +73,6 @@ export default function App() {
     { id: "geral",   label: "Painel Geral", icon: <LayoutDashboard size={14}/> },
     { id: "empresa", label: "Empresa",      icon: <Building2 size={14}/> },
     { id: "bens",    label: "Bens",         icon: <Coins size={14}/> },
-    { id: "apostas", label: "Apostas",      icon: <Target size={14}/> },
-    { id: "tipster", label: "Tipster",      icon: <BarChart2 size={14}/> },
   ];
 
   const subItensImovel = [
@@ -298,8 +294,6 @@ export default function App() {
           )}
           {abaAtiva === "empresa" && <ControleEmpresa />}
           {abaAtiva === "bens"    && <Bens />}
-          {abaAtiva === "apostas" && <ApostasPainel />}
-          {abaAtiva === "tipster" && <TipsterPainel />}
           {abaAtiva === "imoveis" && subAbaImovel === "apartamento" && <Apartamento />}
           {abaAtiva === "imoveis" && subAbaImovel === "casa"        && <CasaJardimMirante />}
           {abaAtiva === "pessoal" && subAbaPessoal === "resumo"     && <ResumoPessoal />}
