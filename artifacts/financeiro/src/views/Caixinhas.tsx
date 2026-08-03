@@ -1,7 +1,7 @@
   import { useState, useEffect } from 'react'
   import { supabase } from '../lib/supabaseClient'
   import {
-    PiggyBank, Plus, X, Edit2, Trash2, History,
+    PiggyBank, Plus, Minus, X, Edit2, Trash2, History,
     Target, TrendingUp, Calendar, Check, AlertTriangle,
     Wifi, WifiOff, RefreshCw,
   } from 'lucide-react'
@@ -168,7 +168,7 @@
     }
 
     const linhas: LinhaRendimento[] = aportes
-      .filter(a => a.valor_adicionado > 0)
+      .filter(a => a.valor_adicionado !== 0)
       .map(a => {
         const n    = diasCorridos(a.data_aporte)
         const fator = usaCDI
@@ -186,8 +186,9 @@
 
   // ─── Modal: Aporte ────────────────────────────────────────────────────────────
 
-  function ModalAporte({ caixinha, onFechar, onConfirmar }: {
+  function ModalAporte({ caixinha, modo, onFechar, onConfirmar }: {
     caixinha: Caixinha
+    modo: 'adicionar' | 'retirar'
     onFechar: () => void
     onConfirmar: (valor: number, data: string, obs: string) => Promise<void>
   }) {
@@ -195,13 +196,23 @@
     const [data, setData] = useState(new Date().toISOString().split('T')[0])
     const [obs, setObs] = useState('')
     const [salvando, setSalvando] = useState(false)
+    const [erro, setErro] = useState<string | null>(null)
+
+    const ehRetirada = modo === 'retirar'
+    const vDigitado = parseFloat(valor)
+    const vSinalizado = !isNaN(vDigitado) ? (ehRetirada ? -Math.abs(vDigitado) : vDigitado) : NaN
 
     async function confirmar(e: React.FormEvent) {
       e.preventDefault()
+      setErro(null)
       const v = parseFloat(valor)
-      if (isNaN(v) || v === 0) return
+      if (isNaN(v) || v <= 0) { setErro('Informe um valor maior que zero.'); return }
+      if (ehRetirada && v > caixinha.valor_atual) {
+        setErro(`Saldo atual é ${fmt(caixinha.valor_atual)} — não dá pra retirar mais que isso.`)
+        return
+      }
       setSalvando(true)
-      await onConfirmar(v, data, obs)
+      await onConfirmar(ehRetirada ? -v : v, data, obs)
       setSalvando(false)
     }
 
@@ -210,8 +221,8 @@
         <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Plus size={18} /></div>
-              <h3 className="text-sm font-bold text-slate-800">Adicionar Valor</h3>
+              <div className={ehRetirada ? 'p-2 bg-rose-100 text-rose-600 rounded-lg' : 'p-2 bg-emerald-100 text-emerald-600 rounded-lg'}>{ehRetirada ? <Minus size={18} /> : <Plus size={18} />}</div>
+              <h3 className="text-sm font-bold text-slate-800">{ehRetirada ? 'Retirar Valor' : 'Adicionar Valor'}</h3>
             </div>
             <button onClick={onFechar} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16} /></button>
           </div>
@@ -220,36 +231,48 @@
             Meta: <strong className="text-slate-700">{caixinha.nome}</strong>
           </div>
 
+          {erro && <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs">{erro}</div>}
+
           <form onSubmit={confirmar} className="space-y-3">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor a Adicionar *</label>
-              <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden focus-within:border-emerald-400">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                {ehRetirada ? 'Valor a Retirar *' : 'Valor a Adicionar *'}
+              </label>
+              <div className={ehRetirada
+                ? 'flex items-center border border-slate-200 rounded-xl overflow-hidden focus-within:border-rose-400'
+                : 'flex items-center border border-slate-200 rounded-xl overflow-hidden focus-within:border-emerald-400'}>
                 <span className="px-3 text-slate-400 text-sm font-bold bg-slate-50 py-2.5 border-r border-slate-200">R$</span>
                 <input type="number" value={valor} onChange={e => setValor(e.target.value)}
-                  step="0.01" placeholder="0,00" required autoFocus
+                  step="0.01" min="0" placeholder="0,00" required autoFocus
                   className="flex-1 px-3 py-2.5 text-sm text-slate-700 focus:outline-none" />
               </div>
-              {parseFloat(valor) !== 0 && !isNaN(parseFloat(valor)) && (
-                <p className={`text-xs mt-1 font-medium ${parseFloat(valor) > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                  Novo saldo: <span className="privado">{fmt(caixinha.valor_atual + parseFloat(valor))}</span>
+              {!isNaN(vSinalizado) && vSinalizado !== 0 && (
+                <p className={`text-xs mt-1 font-medium ${vSinalizado > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                  Novo saldo: <span className="privado">{fmt(caixinha.valor_atual + vSinalizado)}</span>
                 </p>
               )}
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data *</label>
               <input type="date" value={data} onChange={e => setData(e.target.value)} required
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-emerald-400" />
+                className={ehRetirada
+                  ? 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-rose-400'
+                  : 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-emerald-400'} />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Observação</label>
               <textarea value={obs} onChange={e => setObs(e.target.value)} rows={2}
-                placeholder="Ex: Bônus recebido..."
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-emerald-400 resize-none" />
+                placeholder={ehRetirada ? 'Ex: Resgate pra cobrir uma despesa...' : 'Ex: Bônus recebido...'}
+                className={ehRetirada
+                  ? 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-rose-400 resize-none'
+                  : 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-emerald-400 resize-none'} />
             </div>
             <div className="flex gap-2 justify-end pt-1">
               <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
               <button type="submit" disabled={salvando}
-                className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+                className={ehRetirada
+                  ? 'flex items-center gap-2 px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold disabled:opacity-50'
+                  : 'flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50'}>
                 <Check size={13} /> {salvando ? 'Salvando...' : 'Confirmar'}
               </button>
             </div>
@@ -296,7 +319,7 @@
 
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-slate-50 rounded-xl p-3 text-center">
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Depositado</div>
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Aportado (líquido)</div>
               <div className="text-base font-black text-slate-700 mt-0.5 privado">{fmt(totalDepositado)}</div>
             </div>
             <div className="bg-emerald-50 rounded-xl p-3 text-center">
@@ -343,7 +366,9 @@
                       <td className="py-3 pr-3 text-right">
                         <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">{l.dias}d</span>
                       </td>
-                      <td className="py-3 pr-3 text-right font-bold text-emerald-600 privado">+{fmt(l.rendimento)}</td>
+                      <td className={`py-3 pr-3 text-right font-bold privado ${l.rendimento >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {l.rendimento >= 0 ? '+' : ''}{fmt(l.rendimento)}
+                      </td>
                       <td className="py-3 text-right font-black text-slate-800 privado">{fmt(l.valorFinal)}</td>
                     </tr>
                   ))}
@@ -353,7 +378,9 @@
                     <td className="py-3 pr-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</td>
                     <td className="py-3 pr-3 text-right font-black text-slate-700 privado">{fmt(totalDepositado)}</td>
                     <td className="py-3 pr-3 text-right text-slate-300">—</td>
-                    <td className="py-3 pr-3 text-right font-black text-emerald-600 privado">+{fmt(totalRendimento)}</td>
+                    <td className={`py-3 pr-3 text-right font-black privado ${totalRendimento >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {totalRendimento >= 0 ? '+' : ''}{fmt(totalRendimento)}
+                    </td>
                     <td className="py-3 text-right font-black text-slate-900 text-sm privado">{fmt(saldoProjetado)}</td>
                   </tr>
                 </tfoot>
@@ -486,6 +513,7 @@
     onAtualizar: () => void
   }) {
     const [modalAporte, setModalAporte] = useState(false)
+    const [modalRetirada, setModalRetirada] = useState(false)
     const [modalHistorico, setModalHistorico] = useState(false)
     const [modalEditar, setModalEditar] = useState(false)
     const [excluindo, setExcluindo] = useState(false)
@@ -503,9 +531,10 @@
     const dias = caixinha.prazo ? diasAte(caixinha.prazo) : null
     const porDia = faltam && dias && dias > 0 ? faltam / dias : null
 
-    const aportesPositivos = linhasJuros
-    const primeiroDep = aportesPositivos.length > 0
-      ? [...aportesPositivos].sort((a, b) => a.aporte.data_aporte.localeCompare(b.aporte.data_aporte))[0].aporte.data_aporte
+    const numAportes = aportes.filter(a => a.valor_adicionado > 0).length
+    const numRetiradas = aportes.filter(a => a.valor_adicionado < 0).length
+    const primeiroDep = linhasJuros.length > 0
+      ? [...linhasJuros].sort((a, b) => a.aporte.data_aporte.localeCompare(b.aporte.data_aporte))[0].aporte.data_aporte
       : null
     const diasDecorridos = primeiroDep ? diasCorridos(primeiroDep) : 0
 
@@ -519,6 +548,7 @@
         data_aporte: data, observacao: obs || null,
       })
       setModalAporte(false)
+      setModalRetirada(false)
       onAtualizar()
     }
 
@@ -561,12 +591,13 @@
                 <div className="text-lg font-black text-emerald-700 mt-0.5 privado">+{fmt(rendimentoReal)}</div>
                 {primeiroDep && (
                   <div className="text-[10px] text-emerald-500 mt-0.5">
-                    em {diasDecorridos} dia{diasDecorridos !== 1 ? 's' : ''} · {aportesPositivos.length} aporte{aportesPositivos.length !== 1 ? 's' : ''}
+                    em {diasDecorridos} dia{diasDecorridos !== 1 ? 's' : ''} · {numAportes} aporte{numAportes !== 1 ? 's' : ''}
+                    {numRetiradas > 0 && <> · {numRetiradas} retirada{numRetiradas !== 1 ? 's' : ''}</>}
                   </div>
                 )}
               </div>
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Saldo depositado</div>
+                <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Aportado (líquido)</div>
                 <div className="text-lg font-black text-blue-700 mt-0.5 privado">{fmt(totalDepositado)}</div>
                 <div className="text-[10px] text-blue-400 mt-0.5">
                   {fmt(rendimentoMensalEst)}/mês estimado
@@ -638,10 +669,14 @@
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-2 pt-1">
+          <div className="grid grid-cols-5 gap-2 pt-1">
             <button onClick={() => setModalAporte(true)}
               className="flex flex-col items-center gap-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-bold transition-all">
               <Plus size={14} /> Adicionar
+            </button>
+            <button onClick={() => setModalRetirada(true)} disabled={caixinha.valor_atual <= 0}
+              className="flex flex-col items-center gap-1 py-2 bg-rose-500 hover:bg-rose-400 text-white rounded-xl text-[10px] font-bold transition-all disabled:opacity-40">
+              <Minus size={14} /> Retirar
             </button>
             <button onClick={() => setModalHistorico(true)}
               className="flex flex-col items-center gap-1 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-bold transition-all">
@@ -659,7 +694,10 @@
         </div>
 
         {modalAporte && (
-          <ModalAporte caixinha={caixinha} onFechar={() => setModalAporte(false)} onConfirmar={confirmarAporte} />
+          <ModalAporte caixinha={caixinha} modo="adicionar" onFechar={() => setModalAporte(false)} onConfirmar={confirmarAporte} />
+        )}
+        {modalRetirada && (
+          <ModalAporte caixinha={caixinha} modo="retirar" onFechar={() => setModalRetirada(false)} onConfirmar={confirmarAporte} />
         )}
         {modalHistorico && (
           <ModalHistorico
