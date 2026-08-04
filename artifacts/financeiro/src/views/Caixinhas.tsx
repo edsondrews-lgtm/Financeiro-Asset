@@ -364,7 +364,9 @@
                     return (
                       <tr key={l.aporte.id} className="hover:bg-slate-50/70">
                         <td className="py-3 pr-3 text-slate-600 font-medium">{fmtDate(l.aporte.data_aporte)}</td>
-                        <td className="py-3 pr-3 text-right text-slate-700 font-semibold privado">{fmt(l.valorInicial)}</td>
+                        <td className={`py-3 pr-3 text-right font-semibold privado ${ehRetirada ? 'text-rose-500' : 'text-slate-700'}`}>
+                          {fmt(l.valorInicial)}
+                        </td>
                         <td className="py-3 pr-3 text-right">
                           {ehRetirada
                             ? <span className="text-slate-300">—</span>
@@ -373,7 +375,7 @@
                         <td className={`py-3 pr-3 text-right font-bold privado ${ehRetirada ? 'text-slate-300' : 'text-emerald-600'}`}>
                           {ehRetirada ? '—' : `+${fmt(l.rendimento)}`}
                         </td>
-                        <td className="py-3 text-right font-black text-slate-800 privado">
+                        <td className={`py-3 text-right font-black privado ${ehRetirada ? 'text-rose-500' : 'text-slate-800'}`}>
                           {fmt(ehRetirada ? l.valorInicial : l.valorFinal)}
                         </td>
                       </tr>
