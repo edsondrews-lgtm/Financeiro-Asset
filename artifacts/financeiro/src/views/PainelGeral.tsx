@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Home, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Building2, Target, Calendar,
-  ArrowRight, FileText, Flame,
+  ArrowRight, FileText,
 } from "lucide-react";
 import { fmt, MESES_CURTOS, MESES_COMPLETOS, CUBS_ESCRITURA_TOTAL } from "../lib/constants";
 import { usePainelGeral } from "../hooks/usePainelGeral";
@@ -35,16 +35,7 @@ export default function PainelGeral({
     progressoImovel, imovelAtualizado,
     escrituraPaga, cubsRestantesEscritura,
     proximaParcelaImovel,
-    streakMesesPositivo, streakTotalGuardado,
   } = painel;
-
-  const mensagemStreak =
-    streakMesesPositivo === 0 ? "Comece hoje! Feche esse mês no positivo e inicie sua sequência." :
-    streakMesesPositivo === 1 ? "Primeiro mês guardando dinheiro! Continue assim pra criar o hábito." :
-    streakMesesPositivo <= 3  ? "Você está criando o hábito. Não quebra a sequência!" :
-    streakMesesPositivo <= 6  ? "Consistência é tudo — você já provou que consegue." :
-    streakMesesPositivo <= 11 ? "Isso já é um estilo de vida. Continue assim!" :
-                                 "Mais de um ano guardando dinheiro todo mês. Impressionante!";
 
   return (
     <div className="min-h-screen bg-slate-50/60">
@@ -79,34 +70,6 @@ export default function PainelGeral({
               </select>
             </div>
           </div>
-        </div>
-
-        {/* SEQUÊNCIA DE MESES GUARDANDO DINHEIRO */}
-        <div className={`rounded-2xl p-5 shadow-sm flex items-center gap-4 ${
-          streakMesesPositivo > 0
-            ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white"
-            : "bg-white border border-slate-100 text-slate-700"
-        }`}>
-          <div className={`p-3 rounded-2xl shrink-0 ${streakMesesPositivo > 0 ? "bg-white/20" : "bg-emerald-50"}`}>
-            <Flame size={26} className={streakMesesPositivo > 0 ? "text-white" : "text-emerald-400"} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="text-2xl font-black tabular-nums">{streakMesesPositivo}</span>
-              <span className={`text-xs font-bold uppercase tracking-wider ${streakMesesPositivo > 0 ? "text-white/80" : "text-slate-400"}`}>
-                {streakMesesPositivo === 1 ? "mês seguido guardando dinheiro" : "meses seguidos guardando dinheiro"}
-              </span>
-            </div>
-            <p className={`text-xs font-semibold mt-0.5 ${streakMesesPositivo > 0 ? "text-white/90" : "text-slate-500"}`}>
-              {mensagemStreak}
-            </p>
-          </div>
-          {streakTotalGuardado > 0 && (
-            <div className="text-right shrink-0 hidden sm:block">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">Guardado na sequência</p>
-              <p className="text-lg font-black tabular-nums privado">{fmt(streakTotalGuardado)}</p>
-            </div>
-          )}
         </div>
 
         {/* PATRIMÔNIO */}

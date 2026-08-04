@@ -2,33 +2,6 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CUBS_ESCRITURA_TOTAL } from "../lib/constants";
 
-// Quantos meses seguidos (contando pra trás a partir do mês passado — o
-// atual ainda está em andamento e não é avaliado) o saldo líquido aportado
-// nas Caixinhas (aportes - retiradas, de todas as caixinhas, desde o início)
-// fechou positivo. Um mês passado sem nenhum aporte registrado quebra a
-// sequência.
-function calcularStreakPositivo(lancamentos: { data: string; valor: number }[]): { streak: number; totalGuardado: number } {
-  const porMes = new Map<string, number>();
-  for (const l of lancamentos) {
-    const key = l.data?.slice(0, 7);
-    if (!key) continue;
-    porMes.set(key, (porMes.get(key) || 0) + (Number(l.valor) || 0));
-  }
-
-  const hoje = new Date();
-  let streak = 0;
-  let totalGuardado = 0;
-  for (let i = 1; i < 600; i++) {
-    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const saldo = porMes.get(key);
-    if (saldo === undefined || saldo <= 0) break;
-    streak++;
-    totalGuardado += saldo;
-  }
-  return { streak, totalGuardado };
-}
-
 export function usePainelGeral(mesDash: string, anoDash: string) {
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +15,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   // Investimentos / Patrimônio
   const [totalCaixinhas,  setTotalCaixinhas]  = useState(0); // vem via callback do Caixinhas.tsx (c/ rendimento CDI)
   const [listaCaixinhas,  setListaCaixinhas]  = useState<{ nome: string; valor_atual: number }[]>([]);
-  const [caixinhasAportes, setCaixinhasAportes] = useState<any[]>([]);
   const [consorcios,      setConsorcios]      = useState<any[]>([]);
   const [proximaParcela,  setProximaParcela]  = useState<any | null>(null);
   // ── PREVIDÊNCIA ──
@@ -71,7 +43,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
         rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
-        rCaixinhas, rCaixinhasAportes,
+        rCaixinhas,
       ] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
@@ -92,7 +64,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         supabase.from("fgts_lancamentos").select("saldo_total").order("data",{ascending:false}).limit(1),
         supabase.from("bens").select("valor_estimado"),
         supabase.from("caixinhas").select("nome,valor_atual").order("created_at", { ascending: true }),
-        supabase.from("caixinhas_aportes").select("valor_adicionado,data_aporte"),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
@@ -108,8 +79,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         const total = lista.reduce((s: number, c: { valor_atual: number }) => s + c.valor_atual, 0);
         setTotalCaixinhas(total);
       }
-      if (rCaixinhasAportes.data) setCaixinhasAportes(rCaixinhasAportes.data);
-
       // ── previdência ──
       if (rPrevRend.data && rPrevRend.data[0]) {
         const ultimo = rPrevRend.data[0];
@@ -212,10 +181,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
 
   const progressoImovel = imovelAtualizado > 0 ? Math.min(100, (imovelPago / imovelAtualizado) * 100) : 0;
 
-  const { streak: streakMesesPositivo, totalGuardado: streakTotalGuardado } = calcularStreakPositivo(
-    caixinhasAportes.map((a: any) => ({ data: a.data_aporte, valor: Number(a.valor_adicionado) || 0 }))
-  );
-
   return {
     loading,
     notas, proximaParcela, aportesPrev,
@@ -228,6 +193,5 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     progressoImovel, imovelAtualizado,
     escrituraPaga, cubsRestantesEscritura,
     proximaParcelaImovel,
-    streakMesesPositivo, streakTotalGuardado,
   };
 }
