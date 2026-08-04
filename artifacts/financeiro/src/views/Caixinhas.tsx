@@ -359,19 +359,26 @@
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {linhas.map(l => (
-                    <tr key={l.aporte.id} className="hover:bg-slate-50/70">
-                      <td className="py-3 pr-3 text-slate-600 font-medium">{fmtDate(l.aporte.data_aporte)}</td>
-                      <td className="py-3 pr-3 text-right text-slate-700 font-semibold privado">{fmt(l.valorInicial)}</td>
-                      <td className="py-3 pr-3 text-right">
-                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">{l.dias}d</span>
-                      </td>
-                      <td className={`py-3 pr-3 text-right font-bold privado ${l.rendimento >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {l.rendimento >= 0 ? '+' : ''}{fmt(l.rendimento)}
-                      </td>
-                      <td className="py-3 text-right font-black text-slate-800 privado">{fmt(l.valorFinal)}</td>
-                    </tr>
-                  ))}
+                  {linhas.map(l => {
+                    const ehRetirada = l.valorInicial < 0
+                    return (
+                      <tr key={l.aporte.id} className="hover:bg-slate-50/70">
+                        <td className="py-3 pr-3 text-slate-600 font-medium">{fmtDate(l.aporte.data_aporte)}</td>
+                        <td className="py-3 pr-3 text-right text-slate-700 font-semibold privado">{fmt(l.valorInicial)}</td>
+                        <td className="py-3 pr-3 text-right">
+                          {ehRetirada
+                            ? <span className="text-slate-300">—</span>
+                            : <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">{l.dias}d</span>}
+                        </td>
+                        <td className={`py-3 pr-3 text-right font-bold privado ${ehRetirada ? 'text-slate-300' : 'text-emerald-600'}`}>
+                          {ehRetirada ? '—' : `+${fmt(l.rendimento)}`}
+                        </td>
+                        <td className="py-3 text-right font-black text-slate-800 privado">
+                          {fmt(ehRetirada ? l.valorInicial : l.valorFinal)}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
                 <tfoot className="border-t-2 border-slate-200 bg-slate-50 sticky bottom-0">
                   <tr>
