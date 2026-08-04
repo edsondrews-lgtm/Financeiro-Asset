@@ -2,6 +2,48 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CUBS_ESCRITURA_TOTAL } from "../lib/constants";
 
+// Quantos meses seguidos (contando pra trás a partir de hoje) o saldo
+// (entradas - saídas) fechou positivo. Um mês sem nenhum lançamento não
+// quebra a sequência se for o mês atual (ainda em andamento) — só conta
+// contra você se já tiver dado pra fechar o mês e ele não tiver dado positivo,
+// ou se for um mês passado sem nenhum registro (sinal de que não estava
+// controlando as finanças naquele período).
+function calcularStreakPositivo(entradas: any[], saidas: any[]): { streak: number; totalGuardado: number } {
+  const porMes = new Map<string, { entrada: number; saida: number }>();
+  for (const e of entradas) {
+    const key = e.data_entrada?.slice(0, 7);
+    if (!key) continue;
+    const cur = porMes.get(key) || { entrada: 0, saida: 0 };
+    cur.entrada += Number(e.valor) || 0;
+    porMes.set(key, cur);
+  }
+  for (const s of saidas) {
+    const key = s.data_gasto?.slice(0, 7);
+    if (!key) continue;
+    const cur = porMes.get(key) || { entrada: 0, saida: 0 };
+    cur.saida += Number(s.valor) || 0;
+    porMes.set(key, cur);
+  }
+
+  const hoje = new Date();
+  let streak = 0;
+  let totalGuardado = 0;
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const dados = porMes.get(key);
+    if (!dados) {
+      if (i === 0) continue; // mês corrente ainda sem lançamento — não conta nem quebra
+      break;
+    }
+    const saldo = dados.entrada - dados.saida;
+    if (saldo <= 0) break;
+    streak++;
+    totalGuardado += saldo;
+  }
+  return { streak, totalGuardado };
+}
+
 export function usePainelGeral(mesDash: string, anoDash: string) {
   const [loading, setLoading] = useState(false);
 
@@ -182,6 +224,8 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
 
   const progressoImovel = imovelAtualizado > 0 ? Math.min(100, (imovelPago / imovelAtualizado) * 100) : 0;
 
+  const { streak: streakMesesPositivo, totalGuardado: streakTotalGuardado } = calcularStreakPositivo(entradasPF, saidasPF);
+
   return {
     loading,
     notas, proximaParcela, aportesPrev,
@@ -194,5 +238,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     progressoImovel, imovelAtualizado,
     escrituraPaga, cubsRestantesEscritura,
     proximaParcelaImovel,
+    streakMesesPositivo, streakTotalGuardado,
   };
 }
