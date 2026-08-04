@@ -84,11 +84,11 @@ export default function PainelGeral({
         {/* SEQUÊNCIA DE MESES GUARDANDO DINHEIRO */}
         <div className={`rounded-2xl p-5 shadow-sm flex items-center gap-4 ${
           streakMesesPositivo > 0
-            ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white"
+            ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white"
             : "bg-white border border-slate-100 text-slate-700"
         }`}>
-          <div className={`p-3 rounded-2xl shrink-0 ${streakMesesPositivo > 0 ? "bg-white/20" : "bg-amber-50"}`}>
-            <Flame size={26} className={streakMesesPositivo > 0 ? "text-white" : "text-amber-400"} />
+          <div className={`p-3 rounded-2xl shrink-0 ${streakMesesPositivo > 0 ? "bg-white/20" : "bg-emerald-50"}`}>
+            <Flame size={26} className={streakMesesPositivo > 0 ? "text-white" : "text-emerald-400"} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2 flex-wrap">
