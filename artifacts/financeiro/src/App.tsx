@@ -18,6 +18,7 @@ import ExtratosBancarios from "./views/ExtratosBancarios";
 import TelegramGastos from "./views/TelegramGastos";
 import ParaOndeVaiPainel from "./views/ParaOndeVaiPainel";
 import PainelGeral from "./views/PainelGeral";
+import ContasRecorrentes from "./views/ContasRecorrentes";
 import { usePainelGeral } from "./hooks/usePainelGeral";
 import {
   Building2, Home, Wallet, ChevronDown,
@@ -25,7 +26,7 @@ import {
   Shield, TrendingUp, CreditCard,
   BedDouble, Trees, BarChart2, Briefcase, Coins,
   Moon, Sun, Eye, EyeOff, Menu, X,
-  LayoutDashboard, LogOut, Send, Landmark,
+  LayoutDashboard, LogOut, Send, Landmark, ListChecks,
 } from "lucide-react";
 
 export default function App() {
@@ -92,6 +93,7 @@ export default function App() {
     { id: "resumo",       label: "Resumo",       icon: <BarChart2 size={13}/> },
     { id: "entradas",     label: "Entradas",     icon: <TrendingUp size={13}/> },
     { id: "saidas",       label: "Saídas",       icon: <CreditCard size={13}/> },
+    { id: "contas-fixas", label: "Contas Fixas", icon: <ListChecks size={13}/> },
     { id: "geral-gastos", label: "Pra onde vai", icon: <Landmark size={13}/> },
     { id: "bancos",       label: "Bancos",       icon: <FileText size={13}/> },
     { id: "telegram",     label: "Telegram",     icon: <Send size={13}/> },
@@ -299,6 +301,7 @@ export default function App() {
           {abaAtiva === "pessoal" && subAbaPessoal === "resumo"     && <ResumoPessoal />}
           {abaAtiva === "pessoal" && subAbaPessoal === "entradas"   && <EntradasPessoais />}
           {abaAtiva === "pessoal" && subAbaPessoal === "saidas"     && <SaidasPainel />}
+          {abaAtiva === "pessoal" && subAbaPessoal === "contas-fixas" && <ContasRecorrentes />}
           {abaAtiva === "pessoal" && subAbaPessoal === "geral-gastos" && <ParaOndeVaiPainel />}
           {abaAtiva === "pessoal" && subAbaPessoal === "bancos"     && <ExtratosBancarios />}
           {abaAtiva === "pessoal" && subAbaPessoal === "telegram"   && <TelegramGastos />}
