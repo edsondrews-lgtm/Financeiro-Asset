@@ -1,8 +1,10 @@
 -- Checklist de contas mensais (aluguel, faturas, financiamento etc).
 -- contas_recorrentes é o cadastro (o "molde" da conta); contas_recorrentes_pagamentos
--- guarda o status de cada mês. Uma conta ativa aparece em todo mês do checklist mesmo
--- sem linha em pagamentos (a UI trata isso como pendente com o valor_padrao); a linha só
--- é gravada quando o usuário marca como paga ou edita o valor daquele mês.
+-- guarda o status de cada mês. Uma conta com recorrente=true aparece em todo mês do
+-- checklist mesmo sem linha em pagamentos (a UI trata isso como pendente com o
+-- valor_padrao); uma conta avulsa (recorrente=false) só aparece no mês atual, ou em
+-- meses que já tenham uma linha salva. A linha só é gravada quando o usuário marca
+-- como paga ou edita o valor daquele mês.
 
 CREATE TABLE IF NOT EXISTS contas_recorrentes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

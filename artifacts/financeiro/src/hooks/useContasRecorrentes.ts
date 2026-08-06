@@ -94,7 +94,12 @@ export function useContasRecorrentes(mesYM: string) {
     const hoje = new Date();
     const hojeYM = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
 
-    return contasAtivas.map(conta => {
+    // Contas avulsas (não recorrentes) só aparecem no mês atual, ou em meses
+    // onde já existe um lançamento salvo — não ficam se repetindo pra sempre
+    // como uma conta recorrente de verdade (aluguel, condomínio etc).
+    const contasDoMes = contasAtivas.filter(c => c.recorrente || mesYM === hojeYM || pagamentos[c.id]);
+
+    return contasDoMes.map(conta => {
       const pag = pagamentos[conta.id];
       const diaVenc = Math.min(conta.dia_vencimento, new Date(ano, mes, 0).getDate());
       const vencimento = `${ano}-${String(mes).padStart(2, '0')}-${String(diaVenc).padStart(2, '0')}`;

@@ -112,7 +112,7 @@ function ContaFormModal({
           <div className={`p-1.5 rounded-lg ${recorrente ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}><Repeat size={13} /></div>
           <div>
             <div className="text-xs font-bold text-slate-700">{recorrente ? 'Conta recorrente' : 'Conta avulsa (este mês)'}</div>
-            <div className="text-[10px] text-slate-400">{recorrente ? 'Aparece todo mês no checklist' : 'Você desativa manualmente depois de pagar'}</div>
+            <div className="text-[10px] text-slate-400">{recorrente ? 'Aparece todo mês no checklist' : 'Aparece só neste mês, não repete depois'}</div>
           </div>
         </button>
 
