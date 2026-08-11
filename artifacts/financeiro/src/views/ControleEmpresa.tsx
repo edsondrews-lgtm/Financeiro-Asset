@@ -3,8 +3,9 @@ import { supabase } from '../lib/supabaseClient';
 import {
   Building2, Plus, Trash2, Edit2, X,
   ArrowUpRight, DollarSign, Percent, TrendingUp,
-  Calendar, FileText, BarChart3, Receipt, Layers,
+  Calendar, FileText, BarChart3, Receipt, Layers, Check,
 } from 'lucide-react';
+import { resolverAliquota } from '../lib/aliquota';
 
 interface NotaFiscal {
   id: string;
@@ -57,6 +58,9 @@ export default function ControleEmpresa() {
   const [anoAtivo, setAnoAtivo] = useState(anoAtualStr);
   const [notas, setNotas] = useState<NotaFiscal[]>([]);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
+  const [aliquotasOverride, setAliquotasOverride] = useState<Record<string, number>>({});
+  const [editandoAliquota, setEditandoAliquota] = useState<string | null>(null);
+  const [valorAliquotaEdicao, setValorAliquotaEdicao] = useState('');
   const [fechamento, setFechamento] = useState<Fechamento>({ data_limite: dataAtualStr, horario_limite: '23:59', observacao: '' });
   const [modalNota, setModalNota] = useState(false);
   const [modalDespesa, setModalDespesa] = useState(false);
@@ -75,12 +79,18 @@ export default function ControleEmpresa() {
       if (d) setDespesas(d.map(item => ({ ...item, data_vencimento: item.data_vencimento || item.data || item.vencimento || '' })));
       const { data: f } = await supabase.from('empresa_controle_fechamento').select('*').order('id', { ascending: false }).limit(1);
       if (f && f[0]) setFechamento({ data_limite: f[0].data_limite || dataAtualStr, horario_limite: (f[0].horario_limite || '23:59').substring(0, 5), observacao: f[0].observacao || '' });
+      const { data: al } = await supabase.from('empresa_aliquotas').select('mes_ano,aliquota');
+      if (al) {
+        const mapa: Record<string, number> = {};
+        for (const a of al) mapa[a.mes_ano] = Number(a.aliquota);
+        setAliquotasOverride(mapa);
+      }
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
 
   async function salvarNota(e: React.FormEvent) {
     e.preventDefault();
-    const dados = { numero_nota: novaNota.numero_nota, data_emissao: novaNota.data_emissao, tomador: novaNota.tomador || 'O tomador e o intermediário não foram identificados pelo emitente', servico: novaNota.servico, valor: parseFloat(novaNota.valor), aliquota_imposto: Number(mesAtivo) >= 6 ? 7.00 : 6.00 };
+    const dados = { numero_nota: novaNota.numero_nota, data_emissao: novaNota.data_emissao, tomador: novaNota.tomador || 'O tomador e o intermediário não foram identificados pelo emitente', servico: novaNota.servico, valor: parseFloat(novaNota.valor), aliquota_imposto: resolverAliquota(novaNota.data_emissao.substring(0,7), aliquotasOverride) };
     try {
       if (idEditando) await supabase.from('empresa_notas_fiscais').update(dados).eq('id', idEditando);
       else await supabase.from('empresa_notas_fiscais').insert([dados]);
@@ -128,6 +138,22 @@ export default function ControleEmpresa() {
     catch (err: any) { alert(err.message); }
   }
 
+  function iniciarEdicaoAliquota(mesAno: string, valorAtual: number) {
+    setEditandoAliquota(mesAno);
+    setValorAliquotaEdicao(String(valorAtual));
+  }
+
+  async function salvarAliquota(mesAno: string) {
+    const v = parseFloat(valorAliquotaEdicao.replace(',', '.'));
+    if (isNaN(v) || v < 0) { setEditandoAliquota(null); return; }
+    try {
+      const { error } = await supabase.from('empresa_aliquotas').upsert({ mes_ano: mesAno, aliquota: v }, { onConflict: 'mes_ano' });
+      if (error) throw error;
+      setAliquotasOverride(prev => ({ ...prev, [mesAno]: v }));
+    } catch (err: any) { alert('Erro ao salvar alíquota: ' + (err.message ?? 'tente de novo')); }
+    setEditandoAliquota(null);
+  }
+
   const formatarData = (dStr: string) => {
     if (!dStr) return '—';
     const p = dStr.split('-');
@@ -151,14 +177,14 @@ export default function ControleEmpresa() {
   });
 
   const faturamentoMes = notasFiltradas.reduce((s, n) => s + (Number(n.valor) || 0), 0);
-  const aliquotaAtual = Number(mesAtivo) >= 6 ? 0.07 : 0.06;
+  const aliquotaAtual = resolverAliquota(prefixoDataAlvo, aliquotasOverride) / 100;
   const impostoEstimado = faturamentoMes * aliquotaAtual;
   const custosMensais = despesasFiltradas.reduce((s, d) => { const v = Number(d.valor)||0; return d.periodicidade === 'Anual' ? s+(v/12) : s+v; }, 0);
   const lucroLiquidoMes = faturamentoMes - impostoEstimado - custosMensais;
 
   const notasAno = notas.filter(n => n.data_emissao?.startsWith(anoAtivo));
   const faturamentoAno = notasAno.reduce((s, n) => s+(Number(n.valor)||0), 0);
-  const impostoAno = notasAno.reduce((s, n) => s+((Number(n.valor)||0)*(Number(n.data_emissao.split('-')[1])>=6?0.07:0.06)), 0);
+  const impostoAno = notasAno.reduce((s, n) => s+((Number(n.valor)||0)*(resolverAliquota(n.data_emissao.substring(0,7), aliquotasOverride)/100)), 0);
   const custosAnoTotal = despesas.reduce((s, d) => { const v=Number(d.valor)||0; if(d.periodicidade==='Anual') return s+v; return d.data_vencimento?.startsWith(anoAtivo)?s+v:s; }, 0);
   const lucroLiquidoAno = faturamentoAno - impostoAno - custosAnoTotal;
   const mesesComMovimento = new Set(notasAno.map(n => n.data_emissao.substring(0,7))).size || 1;
@@ -469,9 +495,10 @@ export default function ControleEmpresa() {
                   ))}
                 </div>
                 {['01','02','03','04','05','06','07','08','09','10','11','12'].map(mKey => {
-                  const nM = notas.filter(n => n.data_emissao?.startsWith(`${anoAtivo}-${mKey}`));
+                  const mesAno = `${anoAtivo}-${mKey}`;
+                  const nM = notas.filter(n => n.data_emissao?.startsWith(mesAno));
                   const fatM = nM.reduce((s,n) => s+(Number(n.valor)||0), 0);
-                  const alM = Number(mKey) >= 6 ? 0.07 : 0.06;
+                  const alM = resolverAliquota(mesAno, aliquotasOverride) / 100;
                   const impM = fatM * alM;
                   const custM = despesas.reduce((s,d) => { const v=Number(d.valor)||0; if(d.periodicidade==='Anual') return s+(v/12); return d.data_vencimento?.substring(0,7)===`${anoAtivo}-${mKey}`?s+v:s; }, 0);
                   const lucM = fatM - impM - custM;
@@ -486,7 +513,31 @@ export default function ControleEmpresa() {
                         {isAtivo && <span className="text-[9px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-md">ATU</span>}
                       </div>
                       <span className="col-span-1 text-xs font-black text-emerald-600 tabular-nums privado">{fatM>0?fmt(fatM):'—'}</span>
-                      <span className="col-span-1 text-xs text-slate-400 font-semibold">{(alM*100).toFixed(0)}%</span>
+                      <span className="col-span-1 text-xs">
+                        {editandoAliquota === mesAno ? (
+                          <span className="inline-flex items-center gap-1">
+                            <input
+                              type="number" step="0.01" min="0" autoFocus
+                              value={valorAliquotaEdicao}
+                              onChange={e => setValorAliquotaEdicao(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && salvarAliquota(mesAno)}
+                              onBlur={() => salvarAliquota(mesAno)}
+                              className="w-12 px-1 py-0.5 border border-blue-300 rounded text-xs font-semibold text-slate-700 focus:outline-none"
+                            />
+                            <button onMouseDown={e => e.preventDefault()} onClick={() => salvarAliquota(mesAno)} className="text-emerald-500 hover:text-emerald-700">
+                              <Check size={12} />
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => iniciarEdicaoAliquota(mesAno, alM * 100)}
+                            className="text-slate-400 font-semibold hover:text-blue-600 hover:underline decoration-dotted underline-offset-2"
+                            title="Clique pra ajustar manualmente"
+                          >
+                            {(alM*100).toFixed(2).replace(/\.?0+$/, '')}%
+                          </button>
+                        )}
+                      </span>
                       <span className="col-span-1 text-xs text-amber-600 font-semibold tabular-nums privado">{impM>0?fmt(impM):'—'}</span>
                       <span className="col-span-2 text-xs text-rose-600 font-semibold tabular-nums privado">{custM>0?fmt(custM):'—'}</span>
                       <span className={`col-span-1 text-xs font-black text-right tabular-nums ${lucM>=0?'text-slate-900':'text-rose-600'} privado`}>{fatM>0?fmt(lucM):'—'}</span>
