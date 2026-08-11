@@ -26,7 +26,7 @@ const VAZIO: NovoCliente = {
   indicado_por: '',
   receber_mensagem: true,
   localizacao: '',
-  vencimento_aplicativo: '',
+  vencimento_aplicativo: null,
   mac: '',
 }
 
