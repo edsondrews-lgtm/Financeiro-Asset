@@ -4,7 +4,7 @@ import type { Cliente, NovoCliente } from '../../lib/gestor/types'
 import { ClienteForm } from '../../components/gestor/ClienteForm'
 import { RenovarModal } from '../../components/gestor/RenovarModal'
 import { ClienteDetalhesModal } from '../../components/gestor/ClienteDetalhesModal'
-import { formatarData, diasAte, statusData as statusVencimento, iniciais } from '../../lib/gestor/format'
+import { formatarData, diasAte, statusData as statusVencimento, iniciais, cadastroIncompleto } from '../../lib/gestor/format'
 import { registrarPagamento } from '../../lib/gestor/pagamentos'
 
 function opcoesDe(clientes: Cliente[], campo: 'servidor' | 'aplicativo' | 'plano' | 'localizacao') {
@@ -240,7 +240,12 @@ export function ClientesIPTV() {
                         <div className="cliente-cell">
                           <span className="avatar">{iniciais(c.nome)}</span>
                           <div>
-                            <div className="cliente-nome">{c.nome}</div>
+                            <div className="cliente-nome">
+                              {c.nome}
+                              {cadastroIncompleto(c) && (
+                                <span className="badge-incompleto" title="Falta aplicativo ou dispositivo cadastrado">●</span>
+                              )}
+                            </div>
                             {(c.usuario || c.senha) && (
                               <div className="cliente-cred">
                                 {c.usuario ?? '—'} {c.senha ? `· ${c.senha}` : ''}

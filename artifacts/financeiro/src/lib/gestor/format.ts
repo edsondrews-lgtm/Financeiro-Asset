@@ -23,3 +23,11 @@ export function iniciais(nome: string) {
   const partes = nome.trim().split(/\s+/)
   return ((partes[0]?.[0] ?? '') + (partes[1]?.[0] ?? '')).toUpperCase()
 }
+
+// UniTV não depende de app/dispositivo cadastrado — quem usa não conta como cadastro incompleto.
+const APP_SEM_CADASTRO_NECESSARIO = 'unitv'
+
+export function cadastroIncompleto(c: { aplicativo: string | null; dispositivo: string | null }): boolean {
+  if ((c.aplicativo ?? '').trim().toLowerCase() === APP_SEM_CADASTRO_NECESSARIO) return false
+  return !c.aplicativo?.trim() || !c.dispositivo?.trim()
+}

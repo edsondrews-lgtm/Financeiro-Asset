@@ -234,6 +234,14 @@
 }
 .gestor-view .avatar-grande { width: 44px; height: 44px; font-size: 15px; }
 .gestor-view .cliente-nome { color: var(--text-primary); font-weight: 700; font-size: 13px; }
+.gestor-view .badge-incompleto {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9px;
+  color: var(--color-warning);
+  vertical-align: middle;
+  cursor: help;
+}
 .gestor-view .cliente-cred { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--text-muted); }
 
 /* ---------- Status pills ---------- */

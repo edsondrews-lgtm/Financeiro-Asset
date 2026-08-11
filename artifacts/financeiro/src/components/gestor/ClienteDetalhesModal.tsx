@@ -1,4 +1,5 @@
 import type { Cliente } from '../../lib/gestor/types'
+import { cadastroIncompleto } from '../../lib/gestor/format'
 
 interface Props {
   cliente: Cliente
@@ -34,7 +35,12 @@ export function ClienteDetalhesModal({ cliente: c, onFechar }: Props) {
             {c.nome.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase()}
           </span>
           <div>
-            <h3>{c.nome}</h3>
+            <h3>
+              {c.nome}
+              {cadastroIncompleto(c) && (
+                <span className="badge-incompleto" title="Falta aplicativo ou dispositivo cadastrado">●</span>
+              )}
+            </h3>
             {c.arquivado && <span className="pill status-vencido">Arquivado</span>}
           </div>
         </div>
