@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabaseClient";
 import ControleEmpresa from "./views/ControleEmpresa";
+import GestorIPTV from "./views/gestor/GestorIPTV";
 import SaidasPainel from "./views/SaidasPainel";
 import EntradasPessoais from "./views/EntradasPessoais";
 import ResumoPessoal from "./views/ResumoPessoal";
@@ -26,7 +27,7 @@ import {
   Shield, TrendingUp, CreditCard,
   BedDouble, Trees, BarChart2, Briefcase, Coins,
   Moon, Sun, Eye, EyeOff, Menu, X,
-  LayoutDashboard, LogOut, Send, Landmark, ListChecks,
+  LayoutDashboard, LogOut, Send, Landmark, ListChecks, Tv,
 } from "lucide-react";
 
 export default function App() {
@@ -73,6 +74,7 @@ export default function App() {
   const navItems = [
     { id: "geral",   label: "Painel Geral", icon: <LayoutDashboard size={14}/> },
     { id: "empresa", label: "Empresa",      icon: <Building2 size={14}/> },
+    { id: "gestor",  label: "Gestor",       icon: <Tv size={14}/> },
     { id: "bens",    label: "Bens",         icon: <Coins size={14}/> },
   ];
 
@@ -295,6 +297,7 @@ export default function App() {
             />
           )}
           {abaAtiva === "empresa" && <ControleEmpresa />}
+          {abaAtiva === "gestor"  && <GestorIPTV />}
           {abaAtiva === "bens"    && <Bens />}
           {abaAtiva === "imoveis" && subAbaImovel === "apartamento" && <Apartamento />}
           {abaAtiva === "imoveis" && subAbaImovel === "casa"        && <CasaJardimMirante />}
