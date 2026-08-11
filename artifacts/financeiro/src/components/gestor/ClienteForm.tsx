@@ -70,8 +70,10 @@ export function ClienteForm({ valoresIniciais, textoBotao = 'Salvar cliente', on
     setSalvando(true)
     try {
       await onSalvar(dados)
-    } catch {
-      setErro('Não foi possível salvar. Tente de novo.')
+    } catch (err) {
+      console.error('Falha ao salvar cliente:', err)
+      const mensagem = err instanceof Error ? err.message : (err as { message?: string })?.message
+      setErro(mensagem || 'Não foi possível salvar. Tente de novo.')
     } finally {
       setSalvando(false)
     }
