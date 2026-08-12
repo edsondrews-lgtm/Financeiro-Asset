@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Home, PiggyBank, TrendingUp, ArrowUpRight,
   DollarSign, CreditCard, Building2, Target, Calendar,
-  ArrowRight, FileText,
+  ArrowRight, FileText, RefreshCw,
 } from "lucide-react";
 import { fmt, MESES_CURTOS, MESES_COMPLETOS, CUBS_ESCRITURA_TOTAL } from "../lib/constants";
 import { usePainelGeral } from "../hooks/usePainelGeral";
@@ -35,6 +35,7 @@ export default function PainelGeral({
     progressoImovel, imovelAtualizado,
     escrituraPaga, cubsRestantesEscritura,
     proximaParcelaImovel,
+    atualizandoMercado, atualizarValoresMercado,
   } = painel;
 
   return (
@@ -75,7 +76,17 @@ export default function PainelGeral({
         {/* PATRIMÔNIO */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="px-6 pt-6 pb-5 border-b border-white/5">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Patrimônio Total Estimado</p>
+            <div className="flex items-center gap-2 mb-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Patrimônio Total Estimado</p>
+              <button
+                onClick={atualizarValoresMercado}
+                disabled={atualizandoMercado}
+                title="Atualizar rendimento das Caixinhas e cotações de Ações/FIIs"
+                className="text-slate-500 hover:text-white transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={atualizandoMercado ? "animate-spin" : ""} />
+              </button>
+            </div>
             <p className="text-3xl sm:text-4xl md:text-5xl font-black tabular-nums text-white tracking-tight privado">{fmt(patrimonioTotal)}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">

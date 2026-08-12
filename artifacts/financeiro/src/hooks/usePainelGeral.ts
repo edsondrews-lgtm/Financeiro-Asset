@@ -1,13 +1,18 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CUBS_ESCRITURA_TOTAL } from "../lib/constants";
+import { resolverAliquota } from "../lib/aliquota";
+import { buscarHistoricoCDI, calcularJurosCompostos } from "../lib/cdi";
+import { buscarCotacoesBrapi } from "../lib/brapi";
 
 export function usePainelGeral(mesDash: string, anoDash: string) {
   const [loading, setLoading] = useState(false);
+  const [atualizandoMercado, setAtualizandoMercado] = useState(false);
 
   // Empresa
   const [notas,    setNotas]    = useState<any[]>([]);
   const [despesas, setDespesas] = useState<any[]>([]);
+  const [aliquotasOverride, setAliquotasOverride] = useState<Record<string, number>>({});
   // Pessoal
   const [entradasPF, setEntradasPF] = useState<any[]>([]);
   const [saidasPF,   setSaidasPF]   = useState<any[]>([]);
@@ -43,7 +48,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         rConsorcios, rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
         rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
-        rCaixinhas,
+        rCaixinhas, rAliquotas,
       ] = await Promise.all([
         supabase.from("empresa_notas_fiscais").select("valor,data_emissao"),
         supabase.from("empresa_despesas").select("valor,periodicidade,data_vencimento"),
@@ -64,10 +69,16 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         supabase.from("fgts_lancamentos").select("saldo_total").order("data",{ascending:false}).limit(1),
         supabase.from("bens").select("valor_estimado"),
         supabase.from("caixinhas").select("nome,valor_atual").order("created_at", { ascending: true }),
+        supabase.from("empresa_aliquotas").select("mes_ano,aliquota"),
       ]);
 
       if (rNotas.data)      setNotas(rNotas.data);
       if (rDespesas.data)   setDespesas(rDespesas.data);
+      if (rAliquotas.data) {
+        const mapa: Record<string, number> = {};
+        for (const a of rAliquotas.data) mapa[a.mes_ano] = Number(a.aliquota);
+        setAliquotasOverride(mapa);
+      }
       if (rEntradas.data)   setEntradasPF(rEntradas.data);
       if (rSaidas.data)     setSaidasPF(rSaidas.data);
       if (rTelegram.data)   setTelegramPF(rTelegram.data);
@@ -141,11 +152,68 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     finally { setLoading(false); }
   }
 
+  // Recalcula Caixinhas (c/ rendimento CDI real) e Ações/FIIs (c/ cotação
+  // atual via brapi) direto do Painel Geral, sem precisar montar aquelas
+  // telas — que é quando esses valores normalmente são atualizados.
+  async function atualizarValoresMercado() {
+    setAtualizandoMercado(true);
+    await Promise.all([atualizarCaixinhasComRendimento(), atualizarAcoesComCotacao()]);
+    setAtualizandoMercado(false);
+  }
+
+  async function atualizarCaixinhasComRendimento() {
+    try {
+      const [{ data: cx }, { data: ap }] = await Promise.all([
+        supabase.from("caixinhas").select("id,nome,valor_atual"),
+        supabase.from("caixinhas_aportes").select("caixinha_id,valor_adicionado,data_aporte"),
+      ]);
+      const caixinhasList = cx || [];
+      const aportesList   = ap || [];
+      if (caixinhasList.length === 0) return;
+
+      const positivos = aportesList.filter((a: any) => a.valor_adicionado > 0);
+      let cdiMap = new Map<string, number>();
+      if (positivos.length > 0) {
+        const maisAntigo = [...positivos].sort((a: any, b: any) => a.data_aporte.localeCompare(b.data_aporte))[0];
+        try { cdiMap = await buscarHistoricoCDI(new Date(maisAntigo.data_aporte + "T12:00:00")); }
+        catch { /* segue sem CDI, cai no fallback fixo abaixo */ }
+      }
+      const ultimoCDI = [...cdiMap.entries()].sort(([a], [b]) => b.localeCompare(a))[0];
+      const taxaRef = ultimoCDI ? ultimoCDI[1] : 0.0325;
+
+      let totalGeral = 0;
+      for (const c of caixinhasList) {
+        const aportesDaCaixinha = aportesList.filter((a: any) => a.caixinha_id === c.id);
+        const { totalDepositado, totalRendimento } = calcularJurosCompostos(aportesDaCaixinha, taxaRef, cdiMap);
+        const total = totalDepositado + totalRendimento;
+        totalGeral += total > 0 ? total : Number(c.valor_atual);
+      }
+      setTotalCaixinhas(totalGeral);
+      setListaCaixinhas(caixinhasList.map((c: any) => ({ nome: c.nome, valor_atual: Number(c.valor_atual) })));
+    } catch (e) { console.error(e); }
+  }
+
+  async function atualizarAcoesComCotacao() {
+    try {
+      const { data } = await supabase.from("carteira_investimentos").select("ticker,quantidade,preco_medio");
+      const lista = data || [];
+      if (lista.length === 0) { setTotalAcoes(0); return; }
+      const tickers = [...new Set(lista.map((a: any) => a.ticker))];
+      const cotacoes = await buscarCotacoesBrapi(tickers);
+      const total = lista.reduce((s: number, a: any) => {
+        const preco = cotacoes[a.ticker]?.regularMarketPrice;
+        const precoUsado = preco !== undefined ? preco : Number(a.preco_medio);
+        return s + precoUsado * Number(a.quantidade);
+      }, 0);
+      setTotalAcoes(total);
+    } catch (e) { console.error(e); }
+  }
+
   // ── cálculos do mês ──────────────────────────────────────────────────────
   const prefixoDash    = `${anoDash}-${mesDash}`;
   const notasDoMes     = notas.filter(n => n.data_emissao?.startsWith(prefixoDash));
   const faturamentoMes = notasDoMes.reduce((s, n) => s + (Number(n.valor) || 0), 0);
-  const aliquotaMes    = Number(mesDash) >= 6 ? 0.07 : 0.06;
+  const aliquotaMes    = resolverAliquota(prefixoDash, aliquotasOverride) / 100;
   const impostoMes     = faturamentoMes * aliquotaMes;
   const custosMes      = despesas.reduce((s, d) => {
     const v = Number(d.valor) || 0;
@@ -193,5 +261,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     progressoImovel, imovelAtualizado,
     escrituraPaga, cubsRestantesEscritura,
     proximaParcelaImovel,
+    atualizandoMercado, atualizarValoresMercado,
   };
 }

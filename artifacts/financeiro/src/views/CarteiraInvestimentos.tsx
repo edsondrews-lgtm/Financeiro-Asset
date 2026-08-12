@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { TrendingUp, TrendingDown, Plus, X, RefreshCw, Wallet, PieChart, AlertTriangle } from "lucide-react";
 import { PieChart as RechartsPie, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { buscarCotacoesBrapi } from "../lib/brapi";
 
 interface Ativo {
   id: string;
@@ -33,8 +34,6 @@ const formVazio = {
   data_compra: new Date().toISOString().split("T")[0],
   notas: "",
 };
-
-const BRAPI_TOKEN = "qLEc2hpsiVZxUfoyMPzq4P";
 
 const CORES = [
   "#6366f1","#10b981","#f59e0b","#3b82f6","#ec4899",
@@ -69,14 +68,7 @@ export default function CarteiraInvestimentos() {
     setAtivos(prev => prev.map(a => ({ ...a, carregando_cotacao: true, erro_cotacao: false })));
 
     try {
-      // Uma requisição por ticker (múltiplos tickers causam 400 na brapi)
-      const respostas = await Promise.all(
-        lista.map(a => fetch(`https://brapi.dev/api/quote/${a.ticker}?token=${BRAPI_TOKEN}`).then(r => r.json()))
-      );
-      const cotacoes: Record<string, any> = {};
-      respostas.forEach((json: any) => {
-        if (json.results) json.results.forEach((c: any) => { cotacoes[c.symbol] = c; });
-      });
+      const cotacoes = await buscarCotacoesBrapi(lista.map(a => a.ticker));
       setAtivos(prev => prev.map(ativo => {
         const c = cotacoes[ativo.ticker];
         if (!c) return { ...ativo, carregando_cotacao: false, erro_cotacao: true };
