@@ -5,6 +5,7 @@ import {
   RefreshCw, Percent, Zap, CheckCircle2, Clock, Ban,
   DollarSign, BarChart3, Edit2, Check, AlertTriangle, RotateCcw,
 } from 'lucide-react'
+import { buscarHistoricoCDI } from '../lib/cdi'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,16 @@ interface Consorcio {
   valor_parcela_base: number
   fator_correcao: number
   data_inicio: string
+  data_contemplacao: string | null
+  credito_disponivel: number | null
+}
+
+interface Rendimento {
+  id: string
+  consorcio_id: string
+  data: string
+  valor: number
+  observacao: string | null
 }
 
 interface Parcela {
@@ -173,7 +184,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
 
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [editValor, setEditValor] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pago' | 'pendente' | 'cancelada'>('todos')
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pago' | 'pendente' | 'cancelada' | 'projecao'>('todos')
   const [paginaAtual, setPaginaAtual] = useState(1)
   const porPagina = 20
   const [simulacao, setSimulacao] = useState<null | {
@@ -187,19 +198,66 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   const [lances, setLances] = useState<any[]>([])
   const [desfazendo, setDesfazendo] = useState(false)
 
+  const [modalContemplacao, setModalContemplacao] = useState(false)
+  const [contData, setContData] = useState(new Date().toISOString().split('T')[0])
+  const [contValorLance, setContValorLance] = useState('')
+  const [contTipoLance, setContTipoLance] = useState<'embutido' | 'livre'>('embutido')
+  const [contTipoAmort, setContTipoAmort] = useState<'reduzir_parcela' | 'reduzir_prazo'>('reduzir_parcela')
+  const [contCreditoDisponivel, setContCreditoDisponivel] = useState('')
+  const [contNovaParcela, setContNovaParcela] = useState('')
+  const [contAplicando, setContAplicando] = useState(false)
+  const [contErro, setContErro] = useState<string | null>(null)
+
+  const [rendimentos, setRendimentos] = useState<Rendimento[]>([])
+  const [rendData, setRendData] = useState(new Date().toISOString().split('T')[0])
+  const [rendValor, setRendValor] = useState('')
+  const [rendObs, setRendObs] = useState('')
+  const [salvandoRendimento, setSalvandoRendimento] = useState(false)
+
+  // Espelho local do consórcio — a prop `consorcio` só reflete o estado de
+  // quando a tela foi aberta; depois de registrar a contemplação (que grava
+  // direto no banco) precisamos reler essa linha, senão o cartão de crédito
+  // disponível/rendimento continua escondido até sair e voltar da tela.
+  const [consorcioAtual, setConsorcioAtual] = useState<Consorcio>(consorcio)
+
+  // Taxa CDI atual (%/dia), pro crédito parado rendendo 100% do CDI.
+  const [cdiDiario, setCdiDiario] = useState(0)
+  const [carregandoCDI, setCarregandoCDI] = useState(false)
+
+  useEffect(() => {
+    if (consorcioAtual.credito_disponivel == null) return
+    const dataInicio = consorcioAtual.data_contemplacao
+      ? new Date(consorcioAtual.data_contemplacao + 'T12:00:00')
+      : new Date()
+    setCarregandoCDI(true)
+    buscarHistoricoCDI(dataInicio)
+      .then(map => {
+        const entries = [...map.entries()].sort(([a], [b]) => b.localeCompare(a))
+        if (entries.length > 0) setCdiDiario(entries[0][1])
+      })
+      .catch(() => {})
+      .finally(() => setCarregandoCDI(false))
+  }, [consorcioAtual.credito_disponivel, consorcioAtual.data_contemplacao])
+
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const [{ data: parcelaData, error }, { data: lancesData }] = await Promise.all([
+    const [{ data: consorcioData }, { data: parcelaData, error }, { data: lancesData }, { data: rendData_ }] = await Promise.all([
+      supabase.from('consorcios').select('*').eq('id', consorcio.id).single(),
       supabase.from('parcelas_calculadas').select('*')
         .eq('consorcio_id', consorcio.id)
         .order('numero_parcela', { ascending: true }),
       supabase.from('lances_consorcio').select('*')
         .eq('consorcio_id', consorcio.id)
         .order('created_at', { ascending: false }),
+      supabase.from('consorcio_rendimentos').select('*')
+        .eq('consorcio_id', consorcio.id)
+        .order('data', { ascending: false }),
     ])
     if (error) { setErro('Erro: ' + error.message); setCarregando(false); return }
+    if (consorcioData) setConsorcioAtual(consorcioData)
     setParcelas(parcelaData || [])
     setLances(lancesData || [])
+    setRendimentos(rendData_ || [])
     setCarregando(false)
   }, [consorcio.id])
 
@@ -211,10 +269,50 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   const ativas = parcelas.filter(p => p.status !== 'cancelada')
   const progressoPct = ativas.length > 0 ? (pagas.length / ativas.length) * 100 : 0
   const fundoComumPago = pagas.reduce((acc, p) => acc + p.valor_fundo_comum, 0)
-  const saldoDevedor = Math.max(0, consorcio.valor_bem - fundoComumPago)
   const totalPago = pagas.reduce((acc, p) => acc + (p.valor_pago ?? p.valor_total), 0)
   const totalPendente = pendentes.reduce((acc, p) => acc + p.valor_total, 0)
+  // Saldo devedor = soma do que falta pagar nas parcelas pendentes — é assim
+  // que a administradora reporta (bateu certinho com o extrato real: 73
+  // parcelas × R$1.158,05 ≈ R$84.517,95). A fórmula antiga (crédito menos
+  // fundo comum já pago) não representava isso e destoava bastante.
+  const saldoDevedor = totalPendente
   const custoEfetivo = totalPago + totalPendente
+  const totalRendimentos = rendimentos.reduce((acc, r) => acc + r.valor, 0)
+
+  const parcelaAtual = pendentes[0]?.valor_total ?? 0
+  const DIAS_UTEIS_MES = 21
+
+  // Projeção do crédito parado rendendo 100% do CDI, compondo dia a dia a
+  // partir da taxa atual (mantida constante pra frente — é uma estimativa,
+  // não uma previsão do CDI futuro).
+  function saldoProjetadoEmMeses(meses: number): number {
+    const base = consorcioAtual.credito_disponivel ?? 0
+    if (cdiDiario <= 0) return base
+    const dias = Math.round(meses * DIAS_UTEIS_MES)
+    return base * Math.pow(1 + cdiDiario / 100, dias)
+  }
+
+  const rendimentoEsteMes = cdiDiario > 0 && consorcioAtual.credito_disponivel != null
+    ? saldoProjetadoEmMeses(1) - consorcioAtual.credito_disponivel
+    : 0
+
+  // Primeiro mês em que o rendimento MENSAL (incremento daquele mês, não o
+  // acumulado) ultrapassa o valor da parcela atual.
+  const mesCruzamento = (() => {
+    if (cdiDiario <= 0 || parcelaAtual <= 0 || consorcioAtual.credito_disponivel == null) return null
+    for (let m = 1; m <= 600; m++) {
+      const incremento = saldoProjetadoEmMeses(m) - saldoProjetadoEmMeses(m - 1)
+      if (incremento >= parcelaAtual) return m
+    }
+    return null
+  })()
+
+  // Mês a mês (não só marcos) até o fim do consórcio, limitado a 60 linhas
+  // pra não virar uma tabela infinita em prazos muito longos.
+  const marcosProjecao = Array.from(
+    { length: Math.min(pendentes.length || 36, 60) },
+    (_, i) => i + 1,
+  )
 
   function mostrarSucesso(msg: string) { setSucesso(msg); setTimeout(() => setSucesso(null), 4000) }
 
@@ -338,7 +436,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
 
     if (ultimo.tipo_amortizacao === 'reduzir_parcela') {
       // Restaura parcelas pendentes para base × fator_correcao
-      const fator = consorcio.fator_correcao
+      const fator = consorcioAtual.fator_correcao
       const aRestaurar = parcelas.filter(p => p.status === 'pendente')
       for (const p of aRestaurar) {
         await supabase.from('parcelas_calculadas').update({
@@ -369,7 +467,90 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
     await carregar()
   }
 
-  const parcelasFiltradas = filtroStatus === 'todos' ? parcelas : parcelas.filter(p => p.status === filtroStatus)
+  function onContValorLanceChange(v: string) {
+    setContValorLance(v)
+    const lance = parseFloat(v) || 0
+    if (contTipoAmort === 'reduzir_parcela' && pendentes.length > 0) {
+      const reducao = round2(lance / pendentes.length)
+      setContNovaParcela(round2(Math.max(0, (pendentes[0]?.valor_total ?? 0) - reducao)).toString())
+    }
+    setContCreditoDisponivel(round2(Math.max(0, consorcioAtual.valor_bem - lance)).toString())
+  }
+
+  async function registrarContemplacao() {
+    const lance = parseFloat(contValorLance)
+    const creditoFinal = parseFloat(contCreditoDisponivel)
+    const parcelaFinal = parseFloat(contNovaParcela)
+    if (isNaN(lance) || lance <= 0) { setContErro('Valor do lance inválido'); return }
+    if (isNaN(creditoFinal) || creditoFinal < 0) { setContErro('Crédito disponível inválido'); return }
+    if (contTipoAmort === 'reduzir_parcela' && (isNaN(parcelaFinal) || parcelaFinal < 0)) {
+      setContErro('Nova parcela inválida'); return
+    }
+    setContAplicando(true); setContErro(null)
+
+    const dataFmt = new Date(contData + 'T12:00:00').toLocaleDateString('pt-BR')
+
+    if (contTipoAmort === 'reduzir_parcela') {
+      for (const p of pendentes) {
+        await supabase.from('parcelas_calculadas').update({
+          valor_total: parcelaFinal,
+          base_total: parcelaFinal,
+          valor_fundo_comum: parcelaFinal,
+          valor_taxa_adm: 0,
+          valor_fundo_reserva: 0,
+          base_fundo_comum: parcelaFinal,
+          base_taxa_adm: 0,
+          base_fundo_reserva: 0,
+          observacao: ((p.observacao ?? '') + ` | Contemplação ${dataFmt}`).trim(),
+        }).eq('id', p.id)
+      }
+    } else {
+      const valorRef = pendentes[0]?.valor_total ?? 0
+      if (valorRef > 0) {
+        const nCancelar = Math.floor(lance / valorRef)
+        const aCancelar = [...pendentes].reverse().slice(0, nCancelar)
+        for (const p of aCancelar) {
+          await supabase.from('parcelas_calculadas').update({
+            status: 'cancelada',
+            observacao: `Quitada por contemplação ${fmt(lance)}`,
+          }).eq('id', p.id)
+        }
+      }
+    }
+
+    await supabase.from('consorcios').update({
+      data_contemplacao: contData,
+      credito_disponivel: creditoFinal,
+    }).eq('id', consorcio.id)
+
+    await supabase.from('lances_consorcio').insert({
+      consorcio_id: consorcio.id, valor_lance: lance,
+      tipo_amortizacao: contTipoAmort, tipo_lance: contTipoLance,
+      parcela_inicio: pendentes[0]?.numero_parcela ?? 0,
+    })
+
+    setContAplicando(false); setModalContemplacao(false)
+    mostrarSucesso('Contemplação registrada com sucesso!')
+    await carregar()
+  }
+
+  async function adicionarRendimento() {
+    const valor = parseFloat(rendValor)
+    if (isNaN(valor) || valor === 0) { setErro('Valor de rendimento inválido'); return }
+    setSalvandoRendimento(true)
+    const { error } = await supabase.from('consorcio_rendimentos').insert({
+      consorcio_id: consorcio.id, data: rendData, valor, observacao: rendObs || null,
+    })
+    setSalvandoRendimento(false)
+    if (error) { setErro('Erro: ' + error.message); return }
+    setRendValor(''); setRendObs('')
+    mostrarSucesso('Rendimento registrado!')
+    await carregar()
+  }
+
+  const parcelasFiltradas = filtroStatus === 'todos' || filtroStatus === 'projecao'
+    ? parcelas
+    : parcelas.filter(p => p.status === filtroStatus)
   const totalPaginas = Math.ceil(parcelasFiltradas.length / porPagina)
   const parcelasPagina = parcelasFiltradas.slice((paginaAtual - 1) * porPagina, paginaAtual * porPagina)
 
@@ -381,15 +562,30 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
           <div className="p-2.5 bg-violet-600 rounded-xl text-white shadow-md shadow-violet-100"><FileText size={24} /></div>
           <div>
             <button onClick={onVoltar} className="text-xs text-violet-500 hover:text-violet-700 font-bold mb-0.5 block">← Todos os consórcios</button>
-            <h2 className="text-2xl font-bold text-slate-800">{consorcio.descricao}</h2>
-            <p className="text-slate-400 text-xs">{fmt(consorcio.valor_bem)} · {consorcio.prazo} meses · Fator: {consorcio.fator_correcao.toFixed(4)}</p>
+            <h2 className="text-2xl font-bold text-slate-800">{consorcioAtual.descricao}</h2>
+            <p className="text-slate-400 text-xs">
+              {fmt(consorcioAtual.valor_bem)} · {consorcioAtual.prazo} meses · Fator: {consorcioAtual.fator_correcao.toFixed(4)}
+              {consorcioAtual.data_contemplacao && ` · Contemplado em ${new Date(consorcioAtual.data_contemplacao + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+            </p>
           </div>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setModalIPCA(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold">
-            <Percent size={13} /> Aplicar IPCA
-          </button>
+        <div className="flex gap-2 flex-wrap items-center">
+          {!consorcioAtual.data_contemplacao && (
+            <button onClick={() => { setModalContemplacao(true); setContValorLance(''); setContCreditoDisponivel(''); setContNovaParcela(''); setContErro(null) }}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold">
+              <CheckCircle2 size={13} /> Registrar Contemplação
+            </button>
+          )}
+          {!consorcioAtual.data_contemplacao ? (
+            <button onClick={() => setModalIPCA(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold">
+              <Percent size={13} /> Aplicar IPCA
+            </button>
+          ) : (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-400 rounded-xl text-[11px] font-medium border border-slate-100">
+              <Percent size={12} /> Parcelas fixas desde a contemplação — sem correção IPCA
+            </span>
+          )}
           <button onClick={() => { setModalLance(true); setSimulacao(null); setValorLance('') }}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold">
             <Zap size={13} /> Simular Lance
@@ -430,6 +626,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
           </div>
             <p className="text-2xl font-black text-slate-800 privado">{fmt(saldoDevedor)}</p>
             <div className="text-[10px] text-slate-400">FC pago: <span className="privado">{fmt(fundoComumPago)}</span></div>
+            <div className="text-[10px] text-slate-300">Soma das {pendentes.length} parcelas pendentes</div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
@@ -450,6 +647,50 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
           <div className="text-[10px] text-slate-400">{pagas.length} pagas · {canceladas.length} canceladas</div>
         </div>
       </div>
+
+      {consorcioAtual.credito_disponivel != null && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Crédito Disponível (contemplado)</span>
+              <div className="text-2xl font-black text-emerald-600 privado">{fmt(consorcioAtual.credito_disponivel)}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                Registrado como pago pela administradora: <span className="font-bold text-emerald-500 privado">{fmt(totalRendimentos)}</span>
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Data</label>
+                <input type="date" value={rendData} onChange={e => setRendData(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Valor (R$)</label>
+                <input type="number" step="0.01" value={rendValor} onChange={e => setRendValor(e.target.value)}
+                  placeholder="Ex: 16.98" className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Obs. (opcional)</label>
+                <input type="text" value={rendObs} onChange={e => setRendObs(e.target.value)}
+                  placeholder="RENDIMENTO PAGTO" className="w-32 border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+              </div>
+              <button onClick={adicionarRendimento} disabled={salvandoRendimento}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+                {salvandoRendimento ? '...' : 'Adicionar'}
+              </button>
+            </div>
+          </div>
+          {rendimentos.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-50">
+              {rendimentos.slice(0, 12).map(r => (
+                <span key={r.id} className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px]">
+                  {new Date(r.data + 'T12:00:00').toLocaleDateString('pt-BR')}: {fmt(r.valor)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal IPCA */}
       {modalIPCA && (
@@ -604,6 +845,102 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
         </div>
       )}
 
+      {/* Modal Contemplação */}
+      {modalContemplacao && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><CheckCircle2 size={18} /></div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Registrar Contemplação</h3>
+                  <p className="text-[10px] text-slate-400">Evento único — sem desfazer depois</p>
+                </div>
+              </div>
+              <button onClick={() => setModalContemplacao(false)} className="p-1.5 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+            </div>
+
+            {contErro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{contErro}</div>}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data da Contemplação</label>
+              <input type="date" value={contData} onChange={e => setContData(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor do Lance (R$)</label>
+              <input type="number" value={contValorLance} onChange={e => onContValorLanceChange(e.target.value)}
+                placeholder="Ex: 26250" min="0" step="0.01" autoFocus
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tipo de Lance</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['embutido', 'livre'] as const).map(t => (
+                  <button key={t} onClick={() => setContTipoLance(t)}
+                    className={`p-3 rounded-xl border text-xs text-left transition-all ${contTipoLance === t ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                    <div className="font-black">{t === 'embutido' ? 'Embutido' : 'Livre'}</div>
+                    <div className="text-[10px] mt-0.5 opacity-70">
+                      {t === 'embutido' ? 'Sai do próprio crédito' : 'Dinheiro de fora'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tipo de Amortização</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['reduzir_parcela', 'reduzir_prazo'] as const).map(t => (
+                  <button key={t} onClick={() => setContTipoAmort(t)}
+                    className={`p-3 rounded-xl border text-xs text-left transition-all ${contTipoAmort === t ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                    <div className="font-black">{t === 'reduzir_parcela' ? 'Reduzir Parcela' : 'Reduzir Prazo'}</div>
+                    <div className="text-[10px] mt-0.5 opacity-70">
+                      {t === 'reduzir_parcela' ? 'Valor mensal diminui' : 'Remove parcelas do final'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Crédito Disponível Resultante (R$)
+              </label>
+              <input type="number" value={contCreditoDisponivel} onChange={e => setContCreditoDisponivel(e.target.value)}
+                placeholder="Ex: 78781.91" min="0" step="0.01"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+              <p className="text-[10px] text-slate-400 mt-1">Pré-preenchido por estimativa — confira o extrato oficial e ajuste se precisar.</p>
+            </div>
+
+            {contTipoAmort === 'reduzir_parcela' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Nova Parcela Fixa (R$)</label>
+                <input type="number" value={contNovaParcela} onChange={e => setContNovaParcela(e.target.value)}
+                  placeholder="Ex: 1158.05" min="0" step="0.01"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+                <p className="text-[10px] text-slate-400 mt-1">Pré-preenchido por estimativa — confira o extrato oficial e ajuste se precisar.</p>
+              </div>
+            )}
+
+            <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl flex gap-2 text-xs text-amber-700">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+              Define os valores finais das parcelas pendentes e desativa a correção IPCA para este consórcio. Não há desfazer.
+            </div>
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setModalContemplacao(false)} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+              <button onClick={registrarContemplacao} disabled={contAplicando}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+                {contAplicando ? 'Aplicando...' : 'Confirmar Contemplação'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabela */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -618,17 +955,95 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
                 {f === 'cancelada' && ` (${canceladas.length})`}
               </button>
             ))}
+            {consorcioAtual.credito_disponivel != null && (
+              <button onClick={() => setFiltroStatus('projecao')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${filtroStatus === 'projecao' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+                <TrendingUp size={11} /> Projeção
+              </button>
+            )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <button onClick={() => setPaginaAtual(p => Math.max(1, p - 1))} disabled={paginaAtual === 1}
-              className="p-1 disabled:opacity-30"><ChevronUp size={14} /></button>
-            <span>Pág. {paginaAtual}/{totalPaginas || 1}</span>
-            <button onClick={() => setPaginaAtual(p => Math.min(totalPaginas, p + 1))} disabled={paginaAtual >= totalPaginas}
-              className="p-1 disabled:opacity-30"><ChevronDown size={14} /></button>
-          </div>
+          {filtroStatus !== 'projecao' && (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <button onClick={() => setPaginaAtual(p => Math.max(1, p - 1))} disabled={paginaAtual === 1}
+                className="p-1 disabled:opacity-30"><ChevronUp size={14} /></button>
+              <span>Pág. {paginaAtual}/{totalPaginas || 1}</span>
+              <button onClick={() => setPaginaAtual(p => Math.min(totalPaginas, p + 1))} disabled={paginaAtual >= totalPaginas}
+                className="p-1 disabled:opacity-30"><ChevronDown size={14} /></button>
+            </div>
+          )}
         </div>
 
-        {carregando ? (
+        {filtroStatus === 'projecao' ? (
+          <div className="p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Projeção — crédito parado rendendo 100% do CDI</span>
+              {carregandoCDI
+                ? <span className="text-[10px] text-slate-300">buscando taxa...</span>
+                : cdiDiario > 0 && <span className="text-[10px] text-slate-400">taxa atual: {cdiDiario.toFixed(4)}%/dia</span>}
+            </div>
+
+            {cdiDiario <= 0 ? (
+              <p className="text-xs text-slate-400 py-8 text-center">
+                {carregandoCDI ? 'Consultando o CDI no Banco Central...' : 'Não foi possível obter a taxa CDI agora.'}
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                    <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Rendendo este mês</div>
+                    <div className="text-lg font-black text-emerald-700 privado">+{fmt(rendimentoEsteMes)}</div>
+                    <div className="text-[10px] text-emerald-500 mt-0.5">
+                      {rendimentoEsteMes >= parcelaAtual
+                        ? '✓ já supera sua parcela'
+                        : `parcela: ${fmt(parcelaAtual)}`}
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rendimento supera a parcela</div>
+                    <div className="text-lg font-black text-slate-800">
+                      {mesCruzamento == null ? '—' : mesCruzamento === 1 ? 'já supera' : `em ~${mesCruzamento} meses`}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto overflow-y-auto max-h-96 border border-slate-100 rounded-xl">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-white z-10">
+                      <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
+                        <th className="text-left py-1.5 pl-3 pr-3">Mês</th>
+                        <th className="text-right py-1.5 pr-3">Rendimento do mês</th>
+                        <th className="text-right py-1.5 pr-3">Rendimento acumulado</th>
+                        <th className="text-right py-1.5 pr-3">Saldo projetado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {marcosProjecao.map(m => {
+                        const saldo = saldoProjetadoEmMeses(m)
+                        const saldoAnterior = saldoProjetadoEmMeses(m - 1)
+                        const rendMes = saldo - saldoAnterior
+                        const rendAcumulado = saldo - (consorcioAtual.credito_disponivel ?? 0)
+                        const cruzou = mesCruzamento === m
+                        return (
+                          <tr key={m} className={cruzou ? 'bg-emerald-50' : ''}>
+                            <td className="py-1.5 pl-3 pr-3 text-slate-600 font-medium">
+                              {m} {m === 1 ? 'mês' : 'meses'} {cruzou && <span className="text-emerald-600">✓</span>}
+                            </td>
+                            <td className="py-1.5 pr-3 text-right font-bold text-emerald-600 privado">+{fmt(rendMes)}</td>
+                            <td className="py-1.5 pr-3 text-right font-bold text-slate-700 privado">+{fmt(rendAcumulado)}</td>
+                            <td className="py-1.5 pr-3 text-right font-bold text-slate-800 privado">{fmt(saldo)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[10px] text-slate-300">
+                  Estimativa mantendo a taxa CDI de hoje constante — não é garantia de rendimento futuro. Linha marcada = mês em que o rendimento passa a superar a parcela ({fmt(parcelaAtual)}).
+                </p>
+              </>
+            )}
+          </div>
+        ) : carregando ? (
           <div className="text-center py-12 text-slate-400 text-sm">Carregando parcelas...</div>
         ) : (
           <div className="overflow-x-auto">

@@ -55,7 +55,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         supabase.from("entradas_pessoais").select("valor,data_entrada,tipo,descricao"),
         supabase.from("pessoal_saidas").select("valor,data_gasto,categoria"),
         supabase.from("telegram_gastos").select("valor,data_gasto,categoria").eq("reconciliado", false),
-        supabase.from("consorcios").select("valor_bem,descricao"),
+        supabase.from("consorcios").select("valor_bem,descricao,credito_disponivel,data_contemplacao"),
         supabase.from("parcelas_calculadas").select("valor_total,data_vencimento").eq("status","pendente").order("data_vencimento",{ascending:true}).limit(1),
         supabase.from("imovel_cub").select("valor_cub").order("data_registro",{ascending:false}).limit(1),
         supabase.from("imovel_parcelas").select("numero_parcela,valor_pago,adiantada"),
@@ -231,7 +231,10 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   // totalSaidasMes/saldoMes, que ficam de fora dessa correção por ora.
   const telegramDoMes    = telegramPF.filter(t => t.data_gasto?.startsWith(prefixoDash));
 
-  const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.valor_bem)  || 0), 0);
+  // Um consórcio já contemplado (crédito sacável, ainda não usado) conta pelo
+  // crédito disponível real informado pelo administrador, não pelo valor do
+  // bem original — que era só uma expectativa até a contemplação acontecer.
+  const totalConsorcios = consorcios.reduce((s, c) => s + (Number(c.credito_disponivel ?? c.valor_bem) || 0), 0);
   const totalBens = bens.reduce((s: number, b: any) => s + (Number(b.valor_estimado) || 0), 0);
 
   // ── patrimônio ───────────────────────────────────────────────────────────
