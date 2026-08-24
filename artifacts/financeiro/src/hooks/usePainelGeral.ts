@@ -46,7 +46,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
       const [
         rNotas, rDespesas, rEntradas, rSaidas, rTelegram,
         rConsorcios, rParcela,
-        rCub, rParcelasImovel, rReforcos, rImovel, rCasaAportes,
+        rCub, rParcelasImovel, rReforcos, rImovel, rCasaResumo,
         rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
         rCaixinhas, rAliquotas,
       ] = await Promise.all([
@@ -61,7 +61,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         supabase.from("imovel_parcelas").select("numero_parcela,valor_pago,adiantada"),
         supabase.from("imovel_reforcos").select("valor_reais,cubs_pagos,is_escritura"),
         supabase.from("imovel").select("valor_original,cub_referencia_original").limit(1).single(),
-        supabase.from("casa_aportes").select("valor"),
+        supabase.from("casa_resumo").select("total_pago").single(),
         // ── previdência ──
         supabase.from("previdencia_rendimentos").select("valor,saldo_final").order("competencia",{ascending:false}).limit(1),
         supabase.from("previdencia_aportes").select("valor"),
@@ -117,8 +117,9 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         setBens(rBens.data);
       }
 
-      const totalCasa = (rCasaAportes.data || []).reduce((s: number, a: any) => s + (Number(a.valor) || 0), 0);
-      setCasaPago(totalCasa);
+      // Mesma fonte que a tela da Casa usa (view casa_resumo) — evita
+      // recalcular com uma lógica diferente e destoar do valor mostrado lá.
+      setCasaPago(Number(rCasaResumo.data?.total_pago) || 0);
 
       const reforcos       = rReforcos.data || [];
       const parcelasImovel = rParcelasImovel.data || [];
