@@ -60,6 +60,27 @@ export default function App() {
     painel.recarregar();
   }, [abaAtiva]);
 
+  // Cobre o caso de duas abas do navegador abertas (uma no Painel Geral, outra
+  // no Apartamento por ex.) — sem isso, voltar pra aba do navegador não
+  // dispara o efeito acima, que só reage a troca de tela dentro do mesmo app.
+  const painelRef = React.useRef(painel);
+  painelRef.current = painel;
+  const abaAtivaRef = React.useRef(abaAtiva);
+  abaAtivaRef.current = abaAtiva;
+  useEffect(() => {
+    function aoRecuperarFoco() {
+      if (document.visibilityState === "visible" && abaAtivaRef.current === "geral") {
+        painelRef.current.recarregar();
+      }
+    }
+    document.addEventListener("visibilitychange", aoRecuperarFoco);
+    window.addEventListener("focus", aoRecuperarFoco);
+    return () => {
+      document.removeEventListener("visibilitychange", aoRecuperarFoco);
+      window.removeEventListener("focus", aoRecuperarFoco);
+    };
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark-theme', darkMode);
     localStorage.setItem('fh-dark-mode', String(darkMode));
