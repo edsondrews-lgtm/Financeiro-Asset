@@ -50,6 +50,16 @@ export default function App() {
 
   const painel = usePainelGeral(mesDash, anoDash);
 
+  // O painel busca os dados uma vez só ao carregar o app; sem isso, qualquer
+  // alteração feita em Apartamento, Casa, Ações etc. só aparece aqui depois
+  // de um F5 — recarrega toda vez que o usuário volta pra essa aba.
+  const primeiraVezGeral = React.useRef(true);
+  useEffect(() => {
+    if (abaAtiva !== "geral") return;
+    if (primeiraVezGeral.current) { primeiraVezGeral.current = false; return; }
+    painel.recarregar();
+  }, [abaAtiva]);
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark-theme', darkMode);
     localStorage.setItem('fh-dark-mode', String(darkMode));

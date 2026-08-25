@@ -266,5 +266,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     escrituraPaga, cubsRestantesEscritura,
     proximaParcelaImovel,
     atualizandoMercado, atualizarValoresMercado,
+    recarregar: buscarTodos,
   };
 }
