@@ -439,7 +439,11 @@ function AbaHistorico({ vendas, onSelecionar }: { vendas: Venda[]; onSelecionar:
 
 // ─── Aba: Origem do Capital ──────────────────────────────────────────────────
 
-function AbaOrigemCapital({ movimentos }: { movimentos: MovimentoCorretora[] }) {
+function AbaOrigemCapital({ movimentos, onEditar, onExcluir }: {
+  movimentos: MovimentoCorretora[];
+  onEditar: (m: MovimentoCorretora) => void;
+  onExcluir: (m: MovimentoCorretora) => void;
+}) {
   const alocacoes = calcularAlocacoesFIFO(movimentos);
   const debitos = movimentos
     .filter(m => Number(m.valor) < 0)
@@ -475,7 +479,11 @@ function AbaOrigemCapital({ movimentos }: { movimentos: MovimentoCorretora[] }) 
                   <div className="text-[10px] text-slate-400">{fmtData(deb.data_movimento)}</div>
                 </div>
               </div>
-              <div className="text-sm font-black text-slate-700 privado">{fmt(totalDebito)}</div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-black text-slate-700 privado">{fmt(totalDebito)}</div>
+                <button onClick={() => onEditar(deb)} className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100"><Pencil size={12} /></button>
+                <button onClick={() => onExcluir(deb)} className="p-1.5 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100"><Trash2 size={12} /></button>
+              </div>
             </div>
             {origens.length === 0 ? (
               <p className="text-xs text-slate-300 pl-2">Não foi possível rastrear a origem (saldo de antes do controle começar).</p>
@@ -498,6 +506,68 @@ function AbaOrigemCapital({ movimentos }: { movimentos: MovimentoCorretora[] }) 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Modal: Editar lançamento (compra/saque) do saldo da corretora ─────────
+
+function ModalEditarMovimento({ movimento, onFechar, onSalvar }: {
+  movimento: MovimentoCorretora;
+  onFechar: () => void;
+  onSalvar: (dados: { valor: number; data_movimento: string; descricao: string | null }) => Promise<{ error: string | null }>;
+}) {
+  const [valor, setValor] = useState(Math.abs(Number(movimento.valor)).toString());
+  const [data, setData] = useState(movimento.data_movimento);
+  const [descricao, setDescricao] = useState(movimento.descricao ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    const v = parseFloat(valor);
+    if (isNaN(v) || v <= 0) { setErro("Valor inválido."); return; }
+    setSalvando(true); setErro(null);
+    const res = await onSalvar({ valor: v, data_movimento: data, descricao: descricao.trim() || null });
+    setSalvando(false);
+    if (res.error) { setErro(res.error); return; }
+    onFechar();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <form onSubmit={salvar} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-800">Editar {movimento.tipo === "compra" ? "compra" : "saque"}</h3>
+          <button type="button" onClick={onFechar} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+        <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-700">
+          Isso corrige só o lançamento no saldo da corretora — não altera a posição do ativo em si.
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor (R$)</label>
+          <input type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)} autoFocus
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data</label>
+          <input type="date" value={data} onChange={e => setData(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição</label>
+          <input type="text" value={descricao} onChange={e => setDescricao(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+          <button type="submit" disabled={salvando}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -696,6 +766,7 @@ export default function CarteiraInvestimentos() {
   const [vendaSelecionada, setVendaSelecionada] = useState<Venda | null>(null);
   const [modalProventoAberto, setModalProventoAberto] = useState(false);
   const [proventoEditando, setProventoEditando] = useState<Provento | null>(null);
+  const [movimentoEditando, setMovimentoEditando] = useState<MovimentoCorretora | null>(null);
 
   async function carregarAtivos() {
     const { data, error } = await supabase
@@ -852,6 +923,24 @@ export default function CarteiraInvestimentos() {
     await Promise.all([carregarProventos(), carregarMovimentos()]);
   }
 
+  async function salvarEdicaoMovimento(dados: { valor: number; data_movimento: string; descricao: string | null }): Promise<{ error: string | null }> {
+    if (!movimentoEditando) return { error: "Nada selecionado." };
+    const valorFinal = Number(movimentoEditando.valor) < 0 ? -dados.valor : dados.valor;
+    const { error } = await supabase.from("carteira_corretora_movimentos")
+      .update({ valor: valorFinal, data_movimento: dados.data_movimento, descricao: dados.descricao })
+      .eq("id", movimentoEditando.id);
+    if (error) return { error: error.message };
+    await carregarMovimentos();
+    return { error: null };
+  }
+
+  async function excluirMovimento(m: MovimentoCorretora) {
+    if (!confirm(`Excluir este lançamento de ${fmt(Math.abs(Number(m.valor)))}? Isso só ajusta o saldo da corretora, não mexe na posição do ativo.`)) return;
+    const { error } = await supabase.from("carteira_corretora_movimentos").delete().eq("id", m.id);
+    if (error) { setErro("Erro ao excluir: " + error.message); return; }
+    await carregarMovimentos();
+  }
+
   const ativosFiltrados = ativos.filter(a => filtroTipo === "Todos" || a.tipo === filtroTipo);
   const totalInvestido = ativos.reduce((acc, a) => acc + a.preco_medio * a.quantidade, 0);
   const totalAtual = ativos.reduce((acc, a) => acc + (a.valor_total ?? a.preco_medio * a.quantidade), 0);
@@ -957,7 +1046,7 @@ export default function CarteiraInvestimentos() {
       {aba === "historico" ? (
         <AbaHistorico vendas={vendas} onSelecionar={setVendaSelecionada} />
       ) : aba === "origem" ? (
-        <AbaOrigemCapital movimentos={movimentos} />
+        <AbaOrigemCapital movimentos={movimentos} onEditar={setMovimentoEditando} onExcluir={excluirMovimento} />
       ) : aba === "proventos" ? (
         <AbaProventos proventos={proventos} onNovo={abrirNovoProvento} onEditar={abrirEdicaoProvento} onExcluir={excluirProvento} />
       ) : (
@@ -1273,6 +1362,10 @@ export default function CarteiraInvestimentos() {
       {modalProventoAberto && (
         <ModalProvento provento={proventoEditando} tickers={ativos.map(a => a.ticker)}
           onFechar={() => setModalProventoAberto(false)} onSalvar={salvarProvento} />
+      )}
+      {movimentoEditando && (
+        <ModalEditarMovimento movimento={movimentoEditando}
+          onFechar={() => setMovimentoEditando(null)} onSalvar={salvarEdicaoMovimento} />
       )}
     </div>
   );
