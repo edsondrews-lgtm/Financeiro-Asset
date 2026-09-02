@@ -127,6 +127,86 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
 const fmtData = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("pt-BR");
 
+// ─── Modal: Editar ativo ────────────────────────────────────────────────────
+
+function ModalEditarAtivo({ ativo, onFechar, onSalvar }: {
+  ativo: AtivoComCotacao;
+  onFechar: () => void;
+  onSalvar: (dados: { quantidade: number; quantidade_original: number; preco_medio: number; data_compra: string; notas: string | null }) => Promise<{ error: string | null }>;
+}) {
+  const [quantidade, setQuantidade] = useState(ativo.quantidade.toString());
+  const [quantidadeOriginal, setQuantidadeOriginal] = useState(ativo.quantidade_original.toString());
+  const [precoMedio, setPrecoMedio] = useState(ativo.preco_medio.toString());
+  const [dataCompra, setDataCompra] = useState(ativo.data_compra);
+  const [notas, setNotas] = useState(ativo.notas ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    const q = parseFloat(quantidade);
+    const qo = parseFloat(quantidadeOriginal);
+    const pm = parseFloat(precoMedio);
+    if (isNaN(q) || q < 0) { setErro("Quantidade inválida."); return; }
+    if (isNaN(qo) || qo < q) { setErro("A quantidade original não pode ser menor que a quantidade atual."); return; }
+    if (isNaN(pm) || pm < 0) { setErro("Preço médio inválido."); return; }
+    setSalvando(true); setErro(null);
+    const res = await onSalvar({ quantidade: q, quantidade_original: qo, preco_medio: pm, data_compra: dataCompra, notas: notas.trim() || null });
+    setSalvando(false);
+    if (res.error) { setErro(res.error); return; }
+    onFechar();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <form onSubmit={salvar} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-800">Editar {ativo.ticker}</h3>
+          <button type="button" onClick={onFechar} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Quantidade atual</label>
+            <input type="number" min="0" step="any" value={quantidade} onChange={e => setQuantidade(e.target.value)} autoFocus
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Preço médio (R$)</label>
+            <input type="number" min="0" step="0.0001" value={precoMedio} onChange={e => setPrecoMedio(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Quantidade originalmente comprada</label>
+          <input type="number" min="0" step="any" value={quantidadeOriginal} onChange={e => setQuantidadeOriginal(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          <p className="text-[10px] text-slate-400 mt-1">Usado só pra mostrar quanto você já investiu no total (mesmo depois de vender parte). Ajuste manualmente aqui.</p>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data da compra</label>
+          <input type="date" value={dataCompra} onChange={e => setDataCompra(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Notas</label>
+          <input type="text" value={notas} onChange={e => setNotas(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+          <button type="submit" disabled={salvando}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ─── Modal: Vender ativo ───────────────────────────────────────────────────
 
 function ModalVender({ ativo, onFechar, onSalvo }: {
@@ -777,6 +857,7 @@ export default function CarteiraInvestimentos() {
   const [buscandoCotacoes, setBuscandoCotacoes] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<"Todos" | "FII" | "Ação">("Todos");
   const [ativoVendendo, setAtivoVendendo] = useState<AtivoComCotacao | null>(null);
+  const [ativoEditando, setAtivoEditando] = useState<AtivoComCotacao | null>(null);
   const [modalCorretora, setModalCorretora] = useState<"deposito" | "saque" | null>(null);
   const [vendaSelecionada, setVendaSelecionada] = useState<Venda | null>(null);
   const [modalProventoAberto, setModalProventoAberto] = useState(false);
@@ -890,6 +971,14 @@ export default function CarteiraInvestimentos() {
     setRemovendo(null);
     if (error) { setErro("Erro ao remover: " + error.message); return; }
     setAtivos(prev => prev.filter(a => a.id !== id));
+  }
+
+  async function salvarEdicaoAtivo(dados: { quantidade: number; quantidade_original: number; preco_medio: number; data_compra: string; notas: string | null }): Promise<{ error: string | null }> {
+    if (!ativoEditando) return { error: "Nada selecionado." };
+    const { error } = await supabase.from("carteira_investimentos").update(dados).eq("id", ativoEditando.id);
+    if (error) return { error: error.message };
+    await carregarAtivos();
+    return { error: null };
   }
 
   async function aoVender() {
@@ -1356,6 +1445,10 @@ export default function CarteiraInvestimentos() {
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition-colors">
                             <DollarSign size={11} /> Vender
                           </button>
+                          <button onClick={() => setAtivoEditando(ativo)} title="Editar"
+                            className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100 transition-colors">
+                            <Pencil size={11} />
+                          </button>
                           <button onClick={() => removerAtivo(ativo.id, ativo.ticker)} disabled={removendo === ativo.id}
                             title="Excluir sem registrar venda"
                             className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-40">
@@ -1376,6 +1469,9 @@ export default function CarteiraInvestimentos() {
 
       {ativoVendendo && (
         <ModalVender ativo={ativoVendendo} onFechar={() => setAtivoVendendo(null)} onSalvo={aoVender} />
+      )}
+      {ativoEditando && (
+        <ModalEditarAtivo ativo={ativoEditando} onFechar={() => setAtivoEditando(null)} onSalvar={salvarEdicaoAtivo} />
       )}
       {modalCorretora && (
         <ModalMovimentoCorretora tipo={modalCorretora} saldoAtual={saldoCorretora}
