@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 import {
   TrendingUp, TrendingDown, Plus, X, RefreshCw, Wallet, PieChart, AlertTriangle,
   History, Landmark, ArrowDownCircle, ArrowUpCircle, DollarSign, Calendar, Clock, Check,
+  Pencil, Trash2, Coins,
 } from "lucide-react";
 import { PieChart as RechartsPie, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { buscarCotacoesBrapi } from "../lib/brapi";
@@ -46,10 +47,28 @@ interface Venda {
 
 interface MovimentoCorretora {
   id: string;
-  tipo: "deposito" | "saque" | "venda" | "compra";
+  tipo: "deposito" | "saque" | "venda" | "compra" | "provento";
   valor: number;
   descricao: string | null;
   data_movimento: string;
+}
+
+interface Provento {
+  id: string;
+  ativo_id: string | null;
+  ticker: string;
+  tipo: "dividendo" | "jcp";
+  valor: number;
+  data_pagamento: string;
+  observacao: string | null;
+}
+
+interface DadosProvento {
+  ticker: string;
+  tipo: "dividendo" | "jcp";
+  valor: number;
+  data_pagamento: string;
+  observacao: string | null;
 }
 
 function diasEntre(dataInicio: string, dataFim: string): number {
@@ -483,11 +502,187 @@ function AbaOrigemCapital({ movimentos }: { movimentos: MovimentoCorretora[] }) 
   );
 }
 
+// ─── Modal: Novo / Editar provento ──────────────────────────────────────────
+
+function ModalProvento({ provento, tickers, onFechar, onSalvar }: {
+  provento: Provento | null;
+  tickers: string[];
+  onFechar: () => void;
+  onSalvar: (dados: DadosProvento) => Promise<{ error: string | null }>;
+}) {
+  const [ticker, setTicker] = useState(provento?.ticker ?? "");
+  const [tipo, setTipo] = useState<"dividendo" | "jcp">(provento?.tipo ?? "dividendo");
+  const [valor, setValor] = useState(provento?.valor.toString() ?? "");
+  const [dataPagamento, setDataPagamento] = useState(provento?.data_pagamento ?? new Date().toISOString().split("T")[0]);
+  const [observacao, setObservacao] = useState(provento?.observacao ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    const v = parseFloat(valor);
+    if (!ticker.trim()) { setErro("Informe o ticker."); return; }
+    if (isNaN(v) || v <= 0) { setErro("Valor inválido."); return; }
+    setSalvando(true); setErro(null);
+    const res = await onSalvar({ ticker: ticker.toUpperCase().trim(), tipo, valor: v, data_pagamento: dataPagamento, observacao: observacao.trim() || null });
+    setSalvando(false);
+    if (res.error) { setErro(res.error); return; }
+    onFechar();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <form onSubmit={salvar} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-800">{provento ? "Editar provento" : "Novo provento"}</h3>
+          <button type="button" onClick={onFechar} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Ticker *</label>
+            <input type="text" list="tickers-proventos" placeholder="Ex: MXRF11" value={ticker}
+              onChange={e => setTicker(e.target.value.toUpperCase())} autoFocus
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+            <datalist id="tickers-proventos">
+              {tickers.map(t => <option key={t} value={t} />)}
+            </datalist>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Tipo</label>
+            <select value={tipo} onChange={e => setTipo(e.target.value as "dividendo" | "jcp")}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400 bg-white">
+              <option value="dividendo">Dividendo</option>
+              <option value="jcp">JCP</option>
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor (R$) *</label>
+            <input type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data pagamento</label>
+            <input type="date" value={dataPagamento} onChange={e => setDataPagamento(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Observação</label>
+          <input type="text" placeholder="Opcional" value={observacao} onChange={e => setObservacao(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+
+        <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-[11px] text-emerald-700">
+          Esse valor entra automaticamente no Saldo da Corretora.
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+          <button type="submit" disabled={salvando}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Aba: Dividendos e JCP ───────────────────────────────────────────────────
+
+function AbaProventos({ proventos, onNovo, onEditar, onExcluir }: {
+  proventos: Provento[];
+  onNovo: () => void;
+  onEditar: (p: Provento) => void;
+  onExcluir: (p: Provento) => void;
+}) {
+  const totalRecebido = proventos.reduce((s, p) => s + Number(p.valor), 0);
+  const totalDividendo = proventos.filter(p => p.tipo === "dividendo").reduce((s, p) => s + Number(p.valor), 0);
+  const totalJcp = proventos.filter(p => p.tipo === "jcp").reduce((s, p) => s + Number(p.valor), 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <button onClick={onNovo}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-100">
+          <Plus size={13} /> Novo provento
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+          <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Total recebido</span>
+          <h3 className="text-2xl font-black text-emerald-600 mt-2 privado">{fmt(totalRecebido)}</h3>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+          <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Dividendos</span>
+          <h3 className="text-2xl font-black text-slate-800 mt-2 privado">{fmt(totalDividendo)}</h3>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+          <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">JCP</span>
+          <h3 className="text-2xl font-black text-slate-800 mt-2 privado">{fmt(totalJcp)}</h3>
+        </div>
+      </div>
+
+      {proventos.length === 0 ? (
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm text-center py-16 text-slate-400">
+          <Coins size={36} className="mx-auto mb-3 text-slate-200" />
+          <p className="text-sm font-medium">Nenhum provento lançado ainda.</p>
+          <p className="text-xs mt-1 text-slate-300">Clique em "Novo provento" pra registrar um dividendo ou JCP recebido.</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                  <th className="text-left px-6 py-4">Ativo</th>
+                  <th className="text-left px-4 py-4">Tipo</th>
+                  <th className="text-left px-4 py-4">Data</th>
+                  <th className="text-right px-4 py-4">Valor</th>
+                  <th className="text-left px-4 py-4">Observação</th>
+                  <th className="px-4 py-4"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {proventos.map(p => (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-black text-slate-800">{p.ticker}</td>
+                    <td className="px-4 py-4">
+                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${p.tipo === "dividendo" ? "bg-emerald-50 text-emerald-600" : "bg-blue-50 text-blue-600"}`}>
+                        {p.tipo === "dividendo" ? "Dividendo" : "JCP"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-xs text-slate-400">{fmtData(p.data_pagamento)}</td>
+                    <td className="px-4 py-4 text-right font-bold text-emerald-600 privado">{fmt(p.valor)}</td>
+                    <td className="px-4 py-4 text-xs text-slate-400 truncate max-w-[160px]">{p.observacao || "—"}</td>
+                    <td className="px-4 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => onEditar(p)} className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100"><Pencil size={12} /></button>
+                        <button onClick={() => onExcluir(p)} className="p-1.5 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100"><Trash2 size={12} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CarteiraInvestimentos() {
-  const [aba, setAba] = useState<"carteira" | "historico" | "origem">("carteira");
+  const [aba, setAba] = useState<"carteira" | "historico" | "origem" | "proventos">("carteira");
   const [ativos, setAtivos] = useState<AtivoComCotacao[]>([]);
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [movimentos, setMovimentos] = useState<MovimentoCorretora[]>([]);
+  const [proventos, setProventos] = useState<Provento[]>([]);
   const [form, setForm] = useState(formVazio);
   const [salvando, setSalvando] = useState(false);
   const [removendo, setRemovendo] = useState<string | null>(null);
@@ -499,6 +694,8 @@ export default function CarteiraInvestimentos() {
   const [ativoVendendo, setAtivoVendendo] = useState<AtivoComCotacao | null>(null);
   const [modalCorretora, setModalCorretora] = useState<"deposito" | "saque" | null>(null);
   const [vendaSelecionada, setVendaSelecionada] = useState<Venda | null>(null);
+  const [modalProventoAberto, setModalProventoAberto] = useState(false);
+  const [proventoEditando, setProventoEditando] = useState<Provento | null>(null);
 
   async function carregarAtivos() {
     const { data, error } = await supabase
@@ -518,6 +715,11 @@ export default function CarteiraInvestimentos() {
   async function carregarMovimentos() {
     const { data } = await supabase.from("carteira_corretora_movimentos").select("*").order("data_movimento", { ascending: false });
     setMovimentos(data || []);
+  }
+
+  async function carregarProventos() {
+    const { data } = await supabase.from("carteira_proventos").select("*").order("data_pagamento", { ascending: false });
+    setProventos(data || []);
   }
 
   async function buscarCotacoes(lista: AtivoComCotacao[]) {
@@ -552,7 +754,7 @@ export default function CarteiraInvestimentos() {
     }
   }
 
-  useEffect(() => { carregarAtivos(); carregarVendas(); carregarMovimentos(); }, []);
+  useEffect(() => { carregarAtivos(); carregarVendas(); carregarMovimentos(); carregarProventos(); }, []);
   useEffect(() => {
     if (ativos.length > 0 && ativos[0].preco_atual === undefined) buscarCotacoes(ativos);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -613,6 +815,41 @@ export default function CarteiraInvestimentos() {
   async function aoMovimentarCorretora() {
     setModalCorretora(null);
     await carregarMovimentos();
+  }
+
+  function abrirNovoProvento() { setProventoEditando(null); setModalProventoAberto(true); }
+  function abrirEdicaoProvento(p: Provento) { setProventoEditando(p); setModalProventoAberto(true); }
+
+  async function salvarProvento(dados: DadosProvento): Promise<{ error: string | null }> {
+    const descricao = `${dados.tipo === "dividendo" ? "Dividendo" : "JCP"} de ${dados.ticker}`;
+
+    if (proventoEditando) {
+      const { error } = await supabase.from("carteira_proventos").update(dados).eq("id", proventoEditando.id);
+      if (error) return { error: "Erro ao salvar: " + error.message };
+      await supabase.from("carteira_corretora_movimentos")
+        .update({ valor: dados.valor, data_movimento: dados.data_pagamento, descricao })
+        .eq("provento_id", proventoEditando.id);
+    } else {
+      const { data: novo, error } = await supabase.from("carteira_proventos").insert(dados).select().single();
+      if (error || !novo) return { error: "Erro ao salvar: " + error?.message };
+      const { error: errM } = await supabase.from("carteira_corretora_movimentos").insert({
+        tipo: "provento", valor: dados.valor, provento_id: novo.id, data_movimento: dados.data_pagamento, descricao,
+      });
+      if (errM) return { error: "Provento salvo, mas falhou ao creditar na corretora: " + errM.message };
+    }
+
+    await Promise.all([carregarProventos(), carregarMovimentos()]);
+    setSucesso("Provento registrado com sucesso!");
+    setTimeout(() => setSucesso(null), 4000);
+    return { error: null };
+  }
+
+  async function excluirProvento(p: Provento) {
+    if (!confirm(`Excluir provento de ${fmt(p.valor)} (${p.ticker})? Isso também remove o valor do saldo da corretora.`)) return;
+    await supabase.from("carteira_corretora_movimentos").delete().eq("provento_id", p.id);
+    const { error } = await supabase.from("carteira_proventos").delete().eq("id", p.id);
+    if (error) { setErro("Erro ao excluir: " + error.message); return; }
+    await Promise.all([carregarProventos(), carregarMovimentos()]);
   }
 
   const ativosFiltrados = ativos.filter(a => filtroTipo === "Todos" || a.tipo === filtroTipo);
@@ -707,6 +944,10 @@ export default function CarteiraInvestimentos() {
           className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${aba === "origem" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"}`}>
           <Landmark size={12} /> Origem do Capital
         </button>
+        <button onClick={() => setAba("proventos")}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${aba === "proventos" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"}`}>
+          <Coins size={12} /> Dividendos e JCP {proventos.length > 0 && `(${proventos.length})`}
+        </button>
       </div>
 
       {/* Alertas de sistema */}
@@ -717,6 +958,8 @@ export default function CarteiraInvestimentos() {
         <AbaHistorico vendas={vendas} onSelecionar={setVendaSelecionada} />
       ) : aba === "origem" ? (
         <AbaOrigemCapital movimentos={movimentos} />
+      ) : aba === "proventos" ? (
+        <AbaProventos proventos={proventos} onNovo={abrirNovoProvento} onEditar={abrirEdicaoProvento} onExcluir={excluirProvento} />
       ) : (
       <>
       {/* Alertas de investimento */}
@@ -1026,6 +1269,10 @@ export default function CarteiraInvestimentos() {
       )}
       {vendaSelecionada && (
         <ModalDetalheVenda venda={vendaSelecionada} onFechar={() => setVendaSelecionada(null)} />
+      )}
+      {modalProventoAberto && (
+        <ModalProvento provento={proventoEditando} tickers={ativos.map(a => a.ticker)}
+          onFechar={() => setModalProventoAberto(false)} onSalvar={salvarProvento} />
       )}
     </div>
   );
