@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { TrendingUp, TrendingDown, Plus, X, RefreshCw, Wallet, PieChart, AlertTriangle } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, Plus, X, RefreshCw, Wallet, PieChart, AlertTriangle,
+  History, Landmark, ArrowDownCircle, ArrowUpCircle, DollarSign, Calendar, Clock, Check,
+} from "lucide-react";
 import { PieChart as RechartsPie, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { buscarCotacoesBrapi } from "../lib/brapi";
 
@@ -26,6 +29,34 @@ interface AtivoComCotacao extends Ativo {
   erro_cotacao?: boolean;
 }
 
+interface Venda {
+  id: string;
+  ativo_id: string | null;
+  ticker: string;
+  nome: string | null;
+  tipo: string;
+  quantidade_vendida: number;
+  preco_medio_compra: number;
+  data_compra: string;
+  preco_venda: number;
+  data_venda: string;
+  destino: "corretora" | "saque";
+  lucro_prejuizo: number;
+}
+
+interface MovimentoCorretora {
+  id: string;
+  tipo: "deposito" | "saque" | "venda" | "compra";
+  valor: number;
+  descricao: string | null;
+  data_movimento: string;
+}
+
+function diasEntre(dataInicio: string, dataFim: string): number {
+  const ms = new Date(dataFim + "T00:00:00").getTime() - new Date(dataInicio + "T00:00:00").getTime();
+  return Math.max(1, Math.round(ms / 86400000));
+}
+
 const formVazio = {
   ticker: "",
   tipo: "FII" as "FII" | "Ação",
@@ -33,6 +64,7 @@ const formVazio = {
   preco_medio: "",
   data_compra: new Date().toISOString().split("T")[0],
   notas: "",
+  origem: "novo" as "novo" | "corretora",
 };
 
 const CORES = [
@@ -40,8 +72,326 @@ const CORES = [
   "#8b5cf6","#14b8a6","#f97316","#06b6d4","#84cc16",
 ];
 
+const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+const fmtData = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("pt-BR");
+
+// ─── Modal: Vender ativo ───────────────────────────────────────────────────
+
+function ModalVender({ ativo, onFechar, onSalvo }: {
+  ativo: AtivoComCotacao;
+  onFechar: () => void;
+  onSalvo: () => void;
+}) {
+  const [quantidade, setQuantidade] = useState(ativo.quantidade.toString());
+  const [precoVenda, setPrecoVenda] = useState((ativo.preco_atual ?? ativo.preco_medio).toString());
+  const [dataVenda, setDataVenda] = useState(new Date().toISOString().split("T")[0]);
+  const [destino, setDestino] = useState<"corretora" | "saque">("corretora");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const qtd = parseFloat(quantidade) || 0;
+  const preco = parseFloat(precoVenda) || 0;
+  const valorTotal = preco * qtd;
+  const lucro = (preco - ativo.preco_medio) * qtd;
+  const rentabilidade = ativo.preco_medio > 0 ? ((preco - ativo.preco_medio) / ativo.preco_medio) * 100 : 0;
+
+  async function confirmar(e: React.FormEvent) {
+    e.preventDefault();
+    if (qtd <= 0 || qtd > ativo.quantidade) { setErro(`Quantidade deve ser entre 1 e ${ativo.quantidade}.`); return; }
+    if (preco <= 0) { setErro("Informe o preço de venda."); return; }
+    setSalvando(true); setErro(null);
+
+    const { data: venda, error: errV } = await supabase.from("carteira_vendas").insert({
+      ativo_id: ativo.id, ticker: ativo.ticker, nome: ativo.nome, tipo: ativo.tipo,
+      quantidade_vendida: qtd, preco_medio_compra: ativo.preco_medio, data_compra: ativo.data_compra,
+      preco_venda: preco, data_venda: dataVenda, destino, lucro_prejuizo: parseFloat(lucro.toFixed(2)),
+    }).select().single();
+    if (errV || !venda) { setErro("Erro ao registrar venda: " + errV?.message); setSalvando(false); return; }
+
+    if (destino === "corretora") {
+      const { error: errM } = await supabase.from("carteira_corretora_movimentos").insert({
+        tipo: "venda", valor: parseFloat(valorTotal.toFixed(2)), venda_id: venda.id, data_movimento: dataVenda,
+        descricao: `Venda de ${qtd} ${ativo.ticker}`,
+      });
+      if (errM) { setErro("Venda registrada, mas falhou ao creditar na corretora: " + errM.message); setSalvando(false); return; }
+    }
+
+    const restante = parseFloat((ativo.quantidade - qtd).toFixed(8));
+    if (restante <= 0) {
+      await supabase.from("carteira_investimentos").delete().eq("id", ativo.id);
+    } else {
+      await supabase.from("carteira_investimentos").update({ quantidade: restante }).eq("id", ativo.id);
+    }
+
+    setSalvando(false);
+    onSalvo();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <form onSubmit={confirmar} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Vender {ativo.ticker}</h3>
+            <p className="text-xs text-slate-400">Você tem {ativo.quantidade.toLocaleString("pt-BR")} un. · P. médio {fmt(ativo.preco_medio)}</p>
+          </div>
+          <button type="button" onClick={onFechar} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Quantidade</label>
+            <input type="number" min="0" max={ativo.quantidade} step="any" value={quantidade}
+              onChange={e => setQuantidade(e.target.value)} autoFocus
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Preço de venda (R$)</label>
+            <input type="number" min="0" step="0.01" value={precoVenda}
+              onChange={e => setPrecoVenda(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data da venda</label>
+          <input type="date" value={dataVenda} onChange={e => setDataVenda(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Esse dinheiro vai...</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setDestino("corretora")}
+              className={`p-3 rounded-xl border text-left transition-all ${destino === "corretora" ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700"><Landmark size={13} /> Ficar na corretora</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Fica guardado pra próxima compra</div>
+            </button>
+            <button type="button" onClick={() => setDestino("saque")}
+              className={`p-3 rounded-xl border text-left transition-all ${destino === "saque" ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700"><ArrowUpCircle size={13} /> Vou sacar</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Sai da carteira, sem lançar em Entradas</div>
+            </button>
+          </div>
+        </div>
+
+        <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5">
+          <div className="flex justify-between"><span className="text-slate-500">Valor total da venda</span><span className="font-bold text-slate-700">{fmt(valorTotal)}</span></div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Lucro/Prejuízo</span>
+            <span className={`font-black ${lucro >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(lucro)} ({fmtPct(rentabilidade)})</span>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+          <button type="submit" disabled={salvando}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+            {salvando ? "Registrando..." : "Confirmar venda"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Modal: Depositar / Sacar da corretora ─────────────────────────────────
+
+function ModalMovimentoCorretora({ tipo, saldoAtual, onFechar, onSalvo }: {
+  tipo: "deposito" | "saque";
+  saldoAtual: number;
+  onFechar: () => void;
+  onSalvo: () => void;
+}) {
+  const [valor, setValor] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    const v = parseFloat(valor);
+    if (isNaN(v) || v <= 0) { setErro("Informe um valor válido."); return; }
+    if (tipo === "saque" && v > saldoAtual) { setErro(`Saldo insuficiente (disponível: ${fmt(saldoAtual)}).`); return; }
+    setSalvando(true); setErro(null);
+    const { error } = await supabase.from("carteira_corretora_movimentos").insert({
+      tipo, valor: tipo === "saque" ? -v : v, descricao: descricao || null,
+    });
+    setSalvando(false);
+    if (error) { setErro("Erro: " + error.message); return; }
+    onSalvo();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <form onSubmit={salvar} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-800">{tipo === "deposito" ? "Depositar na corretora" : "Sacar da corretora"}</h3>
+          <button type="button" onClick={onFechar} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-slate-400">Saldo atual: <span className="font-bold text-slate-600">{fmt(saldoAtual)}</span></p>
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Valor (R$)</label>
+          <input type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)} autoFocus
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descrição (opcional)</label>
+          <input type="text" value={descricao} onChange={e => setDescricao(e.target.value)}
+            placeholder={tipo === "deposito" ? "Ex: aporte mensal" : "Ex: retirada pra reforma"}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+          <button type="submit" disabled={salvando}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+            {salvando ? "Salvando..." : "Confirmar"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Modal: Detalhe da venda ────────────────────────────────────────────────
+
+function ModalDetalheVenda({ venda, onFechar }: { venda: Venda; onFechar: () => void }) {
+  const dias = diasEntre(venda.data_compra, venda.data_venda);
+  const valorInvestido = venda.preco_medio_compra * venda.quantidade_vendida;
+  const valorVendido = venda.preco_venda * venda.quantidade_vendida;
+  const rentabilidade = valorInvestido > 0 ? (venda.lucro_prejuizo / valorInvestido) * 100 : 0;
+  const rendimentoDiario = venda.lucro_prejuizo / dias;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-black text-slate-800">{venda.ticker}</h3>
+            <p className="text-xs text-slate-400">{venda.nome || venda.tipo} · {venda.quantidade_vendida.toLocaleString("pt-BR")} un.</p>
+          </div>
+          <button onClick={onFechar} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X size={16} /></button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="p-3 bg-slate-50 rounded-xl">
+            <div className="text-slate-400 font-bold uppercase text-[10px] flex items-center gap-1"><Calendar size={10} /> Compra</div>
+            <div className="font-bold text-slate-700 mt-1">{fmtData(venda.data_compra)}</div>
+            <div className="text-slate-500 mt-0.5">{fmt(venda.preco_medio_compra)}/un · {fmt(valorInvestido)}</div>
+          </div>
+          <div className="p-3 bg-slate-50 rounded-xl">
+            <div className="text-slate-400 font-bold uppercase text-[10px] flex items-center gap-1"><Calendar size={10} /> Venda</div>
+            <div className="font-bold text-slate-700 mt-1">{fmtData(venda.data_venda)}</div>
+            <div className="text-slate-500 mt-0.5">{fmt(venda.preco_venda)}/un · {fmt(valorVendido)}</div>
+          </div>
+        </div>
+
+        <div className="p-3 bg-slate-50 rounded-xl text-xs flex items-center gap-2">
+          <Clock size={13} className="text-slate-400" />
+          <span className="text-slate-500">Ficou <span className="font-bold text-slate-700">{dias} dia{dias !== 1 ? "s" : ""}</span> na carteira</span>
+        </div>
+
+        <div className={`p-4 rounded-xl text-center ${venda.lucro_prejuizo >= 0 ? "bg-emerald-50 border border-emerald-100" : "bg-red-50 border border-red-100"}`}>
+          <div className={`text-[10px] font-black uppercase tracking-wider ${venda.lucro_prejuizo >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+            {venda.lucro_prejuizo >= 0 ? "Lucro" : "Prejuízo"} realizado
+          </div>
+          <div className={`text-2xl font-black ${venda.lucro_prejuizo >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmt(venda.lucro_prejuizo)}</div>
+          <div className="text-xs text-slate-500 mt-1">{fmtPct(rentabilidade)} · média de {fmt(rendimentoDiario)}/dia</div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          {venda.destino === "corretora"
+            ? <><Landmark size={12} /> Valor ficou na corretora</>
+            : <><ArrowUpCircle size={12} /> Valor foi sacado</>}
+        </div>
+
+        <div className="flex justify-end">
+          <button onClick={onFechar} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold">Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Aba: Histórico de Vendas ────────────────────────────────────────────────
+
+function AbaHistorico({ vendas, onSelecionar }: { vendas: Venda[]; onSelecionar: (v: Venda) => void }) {
+  const totalRealizado = vendas.reduce((s, v) => s + v.lucro_prejuizo, 0);
+  const vendasLucro = vendas.filter(v => v.lucro_prejuizo >= 0).length;
+
+  if (vendas.length === 0) {
+    return (
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm text-center py-16 text-slate-400">
+        <History size={36} className="mx-auto mb-3 text-slate-200" />
+        <p className="text-sm font-medium">Nenhuma venda registrada ainda.</p>
+        <p className="text-xs mt-1 text-slate-300">Quando você vender um ativo, o histórico aparece aqui.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+          <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Vendas registradas</span>
+          <h3 className="text-2xl font-black text-slate-800 mt-2">{vendas.length}</h3>
+          <span className="text-[10px] text-slate-500 font-medium">{vendasLucro} com lucro · {vendas.length - vendasLucro} com prejuízo</span>
+        </div>
+        <div className={`bg-white p-6 rounded-2xl border shadow-sm ${totalRealizado >= 0 ? "border-emerald-100" : "border-red-100"}`}>
+          <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Resultado realizado</span>
+          <h3 className={`text-2xl font-black mt-2 privado ${totalRealizado >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(totalRealizado)}</h3>
+          <span className="text-[10px] text-slate-500 font-medium">Soma de todas as vendas</span>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                <th className="text-left px-6 py-4">Ativo</th>
+                <th className="text-right px-4 py-4">Qtd</th>
+                <th className="text-left px-4 py-4">Compra</th>
+                <th className="text-left px-4 py-4">Venda</th>
+                <th className="text-right px-4 py-4">Lucro/Prej.</th>
+                <th className="text-center px-4 py-4">Destino</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {vendas.map(v => (
+                <tr key={v.id} onClick={() => onSelecionar(v)} className="hover:bg-slate-50 transition-colors cursor-pointer">
+                  <td className="px-6 py-4">
+                    <div className="font-black text-slate-800">{v.ticker}</div>
+                    {v.nome && <div className="text-xs text-slate-400 truncate max-w-[140px]">{v.nome}</div>}
+                  </td>
+                  <td className="px-4 py-4 text-right text-slate-600 font-medium">{v.quantidade_vendida.toLocaleString("pt-BR")}</td>
+                  <td className="px-4 py-4 text-xs text-slate-400">{fmtData(v.data_compra)}</td>
+                  <td className="px-4 py-4 text-xs text-slate-400">{fmtData(v.data_venda)}</td>
+                  <td className="px-4 py-4 text-right">
+                    <span className={`font-bold privado ${v.lucro_prejuizo >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(v.lucro_prejuizo)}</span>
+                  </td>
+                  <td className="px-4 py-4 text-center">
+                    {v.destino === "corretora"
+                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold"><Landmark size={10} /> Corretora</span>
+                      : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold"><ArrowUpCircle size={10} /> Sacado</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CarteiraInvestimentos() {
+  const [aba, setAba] = useState<"carteira" | "historico">("carteira");
   const [ativos, setAtivos] = useState<AtivoComCotacao[]>([]);
+  const [vendas, setVendas] = useState<Venda[]>([]);
+  const [movimentos, setMovimentos] = useState<MovimentoCorretora[]>([]);
   const [form, setForm] = useState(formVazio);
   const [salvando, setSalvando] = useState(false);
   const [removendo, setRemovendo] = useState<string | null>(null);
@@ -50,6 +400,9 @@ export default function CarteiraInvestimentos() {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [buscandoCotacoes, setBuscandoCotacoes] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<"Todos" | "FII" | "Ação">("Todos");
+  const [ativoVendendo, setAtivoVendendo] = useState<AtivoComCotacao | null>(null);
+  const [modalCorretora, setModalCorretora] = useState<"deposito" | "saque" | null>(null);
+  const [vendaSelecionada, setVendaSelecionada] = useState<Venda | null>(null);
 
   async function carregarAtivos() {
     const { data, error } = await supabase
@@ -59,6 +412,16 @@ export default function CarteiraInvestimentos() {
       .order("ticker", { ascending: true });
     if (error) { setErro("Erro ao carregar: " + error.message); return; }
     setAtivos(data || []);
+  }
+
+  async function carregarVendas() {
+    const { data } = await supabase.from("carteira_vendas").select("*").order("data_venda", { ascending: false });
+    setVendas(data || []);
+  }
+
+  async function carregarMovimentos() {
+    const { data } = await supabase.from("carteira_corretora_movimentos").select("*").order("data_movimento", { ascending: false });
+    setMovimentos(data || []);
   }
 
   async function buscarCotacoes(lista: AtivoComCotacao[]) {
@@ -93,11 +456,13 @@ export default function CarteiraInvestimentos() {
     }
   }
 
-  useEffect(() => { carregarAtivos(); }, []);
+  useEffect(() => { carregarAtivos(); carregarVendas(); carregarMovimentos(); }, []);
   useEffect(() => {
     if (ativos.length > 0 && ativos[0].preco_atual === undefined) buscarCotacoes(ativos);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ativos.length]);
+
+  const saldoCorretora = movimentos.reduce((s, m) => s + Number(m.valor), 0);
 
   async function salvarAtivo(e: React.FormEvent) {
     e.preventDefault();
@@ -105,14 +470,28 @@ export default function CarteiraInvestimentos() {
     if (!form.ticker || !form.quantidade || !form.preco_medio || !form.data_compra) {
       setErro("Preencha todos os campos obrigatórios."); return;
     }
+    const custoTotal = parseFloat(form.quantidade) * parseFloat(form.preco_medio);
+    if (form.origem === "corretora" && custoTotal > saldoCorretora) {
+      setErro(`Saldo da corretora insuficiente (disponível: ${fmt(saldoCorretora)}, necessário: ${fmt(custoTotal)}).`);
+      return;
+    }
     setSalvando(true);
     const { error } = await supabase.from("carteira_investimentos").insert({
       ticker: form.ticker.toUpperCase().trim(), tipo: form.tipo,
       quantidade: parseFloat(form.quantidade), preco_medio: parseFloat(form.preco_medio),
       data_compra: form.data_compra, notas: form.notas || null,
     });
+    if (error) { setErro("Erro ao salvar: " + error.message); setSalvando(false); return; }
+
+    if (form.origem === "corretora") {
+      await supabase.from("carteira_corretora_movimentos").insert({
+        tipo: "compra", valor: -parseFloat(custoTotal.toFixed(2)),
+        descricao: `Compra de ${form.quantidade} ${form.ticker.toUpperCase()}`, data_movimento: form.data_compra,
+      });
+      await carregarMovimentos();
+    }
+
     setSalvando(false);
-    if (error) { setErro("Erro ao salvar: " + error.message); return; }
     setSucesso(`${form.ticker.toUpperCase()} cadastrado com sucesso!`);
     setForm(formVazio); setMostrarForm(false);
     await carregarAtivos();
@@ -120,7 +499,7 @@ export default function CarteiraInvestimentos() {
   }
 
   async function removerAtivo(id: string, ticker: string) {
-    if (!confirm(`Remover ${ticker} da carteira?`)) return;
+    if (!confirm(`Remover ${ticker} da carteira sem registrar venda?`)) return;
     setRemovendo(id);
     const { error } = await supabase.from("carteira_investimentos").delete().eq("id", id);
     setRemovendo(null);
@@ -128,8 +507,17 @@ export default function CarteiraInvestimentos() {
     setAtivos(prev => prev.filter(a => a.id !== id));
   }
 
-  const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+  async function aoVender() {
+    setAtivoVendendo(null);
+    await Promise.all([carregarAtivos(), carregarVendas(), carregarMovimentos()]);
+    setSucesso("Venda registrada com sucesso!");
+    setTimeout(() => setSucesso(null), 4000);
+  }
+
+  async function aoMovimentarCorretora() {
+    setModalCorretora(null);
+    await carregarMovimentos();
+  }
 
   const ativosFiltrados = ativos.filter(a => filtroTipo === "Todos" || a.tipo === filtroTipo);
   const totalInvestido = ativos.reduce((acc, a) => acc + a.preco_medio * a.quantidade, 0);
@@ -188,10 +576,47 @@ export default function CarteiraInvestimentos() {
         </div>
       </div>
 
+      {/* Saldo na corretora */}
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-slate-100 text-slate-600 rounded-xl"><Landmark size={18} /></div>
+          <div>
+            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Saldo na Corretora</span>
+            <span className="text-xl font-black text-slate-800 privado">{fmt(saldoCorretora)}</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setModalCorretora("deposito")}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all">
+            <ArrowDownCircle size={13} /> Depositar
+          </button>
+          <button onClick={() => setModalCorretora("saque")}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all">
+            <ArrowUpCircle size={13} /> Sacar
+          </button>
+        </div>
+      </div>
+
+      {/* Abas */}
+      <div className="flex gap-2">
+        <button onClick={() => setAba("carteira")}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${aba === "carteira" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"}`}>
+          <Wallet size={12} /> Carteira
+        </button>
+        <button onClick={() => setAba("historico")}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${aba === "historico" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"}`}>
+          <History size={12} /> Histórico de Vendas {vendas.length > 0 && `(${vendas.length})`}
+        </button>
+      </div>
+
       {/* Alertas de sistema */}
       {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium">{erro}</div>}
       {sucesso && <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-medium">✓ {sucesso}</div>}
 
+      {aba === "historico" ? (
+        <AbaHistorico vendas={vendas} onSelecionar={setVendaSelecionada} />
+      ) : (
+      <>
       {/* Alertas de investimento */}
       {alertas.length > 0 && (
         <div className="space-y-2">
@@ -249,6 +674,23 @@ export default function CarteiraInvestimentos() {
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-emerald-400" />
               </div>
             </div>
+
+            <div className="mt-4">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">De onde vem o dinheiro?</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button type="button" onClick={() => setForm({ ...form, origem: "novo" })}
+                  className={`p-3 rounded-xl border text-left transition-all ${form.origem === "novo" ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+                  <div className="text-xs font-bold text-slate-700">Dinheiro novo</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">De fora da corretora, sem mexer no saldo</div>
+                </button>
+                <button type="button" onClick={() => setForm({ ...form, origem: "corretora" })}
+                  className={`p-3 rounded-xl border text-left transition-all ${form.origem === "corretora" ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+                  <div className="text-xs font-bold text-slate-700">Saldo da corretora</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Disponível: {fmt(saldoCorretora)}</div>
+                </button>
+              </div>
+            </div>
+
             <div className="flex justify-end mt-4">
               <button type="submit" disabled={salvando}
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50">
@@ -450,10 +892,17 @@ export default function CarteiraInvestimentos() {
                         {new Date(ativo.data_compra + "T00:00:00").toLocaleDateString("pt-BR")}
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <button onClick={() => removerAtivo(ativo.id, ativo.ticker)} disabled={removendo === ativo.id}
-                          className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-40">
-                          {removendo === ativo.id ? "…" : <X size={14} />}
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => setAtivoVendendo(ativo)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition-colors">
+                            <DollarSign size={11} /> Vender
+                          </button>
+                          <button onClick={() => removerAtivo(ativo.id, ativo.ticker)} disabled={removendo === ativo.id}
+                            title="Excluir sem registrar venda"
+                            className="text-slate-300 hover:text-red-400 transition-colors disabled:opacity-40">
+                            {removendo === ativo.id ? "…" : <X size={14} />}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -462,6 +911,19 @@ export default function CarteiraInvestimentos() {
             </table>
           </div>
         </div>
+      )}
+      </>
+      )}
+
+      {ativoVendendo && (
+        <ModalVender ativo={ativoVendendo} onFechar={() => setAtivoVendendo(null)} onSalvo={aoVender} />
+      )}
+      {modalCorretora && (
+        <ModalMovimentoCorretora tipo={modalCorretora} saldoAtual={saldoCorretora}
+          onFechar={() => setModalCorretora(null)} onSalvo={aoMovimentarCorretora} />
+      )}
+      {vendaSelecionada && (
+        <ModalDetalheVenda venda={vendaSelecionada} onFechar={() => setVendaSelecionada(null)} />
       )}
     </div>
   );
