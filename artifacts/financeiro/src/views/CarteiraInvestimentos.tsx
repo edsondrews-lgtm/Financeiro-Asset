@@ -491,14 +491,26 @@ function AbaOrigemCapital({ movimentos, onEditar, onExcluir }: {
               <div className="space-y-1.5 pl-2 border-l-2 border-slate-100 ml-4">
                 {origens.map((o, i) => (
                   <div key={i} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-slate-500">
+                    <div className="flex items-center gap-1.5 text-slate-500 min-w-0">
                       {o.credito.tipo === "venda"
                         ? <DollarSign size={11} className="text-emerald-500 shrink-0" />
+                        : o.credito.tipo === "provento"
+                        ? <Coins size={11} className="text-amber-500 shrink-0" />
                         : <ArrowDownCircle size={11} className="text-blue-400 shrink-0" />}
-                      <span>{o.credito.descricao || (o.credito.tipo === "venda" ? "Venda de ativo" : "Depósito")}</span>
-                      <span className="text-slate-300">· {fmtData(o.credito.data_movimento)}</span>
+                      <span className="truncate">{o.credito.descricao || (o.credito.tipo === "venda" ? "Venda de ativo" : o.credito.tipo === "provento" ? "Provento" : "Depósito")}</span>
+                      <span className="text-slate-300 shrink-0">· {fmtData(o.credito.data_movimento)}</span>
                     </div>
-                    <span className="font-bold text-slate-600 privado shrink-0">{fmt(o.valor)}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="font-bold text-slate-600 privado">{fmt(o.valor)}</span>
+                      {o.credito.tipo === "deposito" && (
+                        <>
+                          <button onClick={() => onEditar(o.credito)} title="Editar depósito"
+                            className="p-1 rounded text-slate-300 hover:text-slate-600 hover:bg-slate-100"><Pencil size={10} /></button>
+                          <button onClick={() => onExcluir(o.credito)} title="Excluir depósito"
+                            className="p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50"><Trash2 size={10} /></button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -538,7 +550,9 @@ function ModalEditarMovimento({ movimento, onFechar, onSalvar }: {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <form onSubmit={salvar} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-800">Editar {movimento.tipo === "compra" ? "compra" : "saque"}</h3>
+          <h3 className="text-sm font-bold text-slate-800">
+            Editar {movimento.tipo === "compra" ? "compra" : movimento.tipo === "deposito" ? "depósito" : "saque"}
+          </h3>
           <button type="button" onClick={onFechar} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
         </div>
         {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
