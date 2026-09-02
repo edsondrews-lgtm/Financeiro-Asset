@@ -16,6 +16,7 @@ interface Ativo {
   setor: string | null;
   quantidade: number;
   quantidade_original: number;
+  capital_novo: boolean;
   preco_medio: number;
   data_compra: string;
   notas: string | null;
@@ -132,10 +133,11 @@ const fmtData = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("pt-
 function ModalEditarAtivo({ ativo, onFechar, onSalvar }: {
   ativo: AtivoComCotacao;
   onFechar: () => void;
-  onSalvar: (dados: { quantidade: number; quantidade_original: number; preco_medio: number; data_compra: string; notas: string | null }) => Promise<{ error: string | null }>;
+  onSalvar: (dados: { quantidade: number; quantidade_original: number; capital_novo: boolean; preco_medio: number; data_compra: string; notas: string | null }) => Promise<{ error: string | null }>;
 }) {
   const [quantidade, setQuantidade] = useState(ativo.quantidade.toString());
   const [quantidadeOriginal, setQuantidadeOriginal] = useState(ativo.quantidade_original.toString());
+  const [capitalNovo, setCapitalNovo] = useState(ativo.capital_novo);
   const [precoMedio, setPrecoMedio] = useState(ativo.preco_medio.toString());
   const [dataCompra, setDataCompra] = useState(ativo.data_compra);
   const [notas, setNotas] = useState(ativo.notas ?? "");
@@ -151,7 +153,7 @@ function ModalEditarAtivo({ ativo, onFechar, onSalvar }: {
     if (isNaN(qo) || qo < q) { setErro("A quantidade original não pode ser menor que a quantidade atual."); return; }
     if (isNaN(pm) || pm < 0) { setErro("Preço médio inválido."); return; }
     setSalvando(true); setErro(null);
-    const res = await onSalvar({ quantidade: q, quantidade_original: qo, preco_medio: pm, data_compra: dataCompra, notas: notas.trim() || null });
+    const res = await onSalvar({ quantidade: q, quantidade_original: qo, capital_novo: capitalNovo, preco_medio: pm, data_compra: dataCompra, notas: notas.trim() || null });
     setSalvando(false);
     if (res.error) { setErro(res.error); return; }
     onFechar();
@@ -184,6 +186,16 @@ function ModalEditarAtivo({ ativo, onFechar, onSalvar }: {
             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
           <p className="text-[10px] text-slate-400 mt-1">Usado só pra mostrar quanto você já investiu no total (mesmo depois de vender parte). Ajuste manualmente aqui.</p>
         </div>
+
+        <button type="button" onClick={() => setCapitalNovo(v => !v)}
+          className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${capitalNovo ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>
+          <div className={`p-1.5 rounded-lg ${capitalNovo ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"}`}><Coins size={13} /></div>
+          <div>
+            <div className="text-xs font-bold text-slate-700">{capitalNovo ? "Capital novo" : "Lucro reinvestido"}</div>
+            <div className="text-[10px] text-slate-400">{capitalNovo ? "Dinheiro de fora, conta no total investido" : "Comprado com lucro de outra venda — não conta no total investido"}</div>
+          </div>
+        </button>
+
         <div>
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data da compra</label>
           <input type="date" value={dataCompra} onChange={e => setDataCompra(e.target.value)}
@@ -973,7 +985,7 @@ export default function CarteiraInvestimentos() {
     setAtivos(prev => prev.filter(a => a.id !== id));
   }
 
-  async function salvarEdicaoAtivo(dados: { quantidade: number; quantidade_original: number; preco_medio: number; data_compra: string; notas: string | null }): Promise<{ error: string | null }> {
+  async function salvarEdicaoAtivo(dados: { quantidade: number; quantidade_original: number; capital_novo: boolean; preco_medio: number; data_compra: string; notas: string | null }): Promise<{ error: string | null }> {
     if (!ativoEditando) return { error: "Nada selecionado." };
     const { error } = await supabase.from("carteira_investimentos").update(dados).eq("id", ativoEditando.id);
     if (error) return { error: error.message };
@@ -1048,7 +1060,7 @@ export default function CarteiraInvestimentos() {
 
   const ativosFiltrados = ativos.filter(a => filtroTipo === "Todos" || a.tipo === filtroTipo);
   const totalInvestido = ativos.reduce((acc, a) => acc + a.preco_medio * a.quantidade, 0);
-  const totalInvestidoOriginal = ativos.reduce((acc, a) => acc + a.preco_medio * (a.quantidade_original ?? a.quantidade), 0);
+  const totalInvestidoOriginal = ativos.filter(a => a.capital_novo).reduce((acc, a) => acc + a.preco_medio * (a.quantidade_original ?? a.quantidade), 0);
   const totalAtual = ativos.reduce((acc, a) => acc + (a.valor_total ?? a.preco_medio * a.quantidade), 0);
   const totalLucro = totalAtual - totalInvestido;
   const rentabilidadeTotal = totalInvestido > 0 ? (totalLucro / totalInvestido) * 100 : 0;
@@ -1249,8 +1261,8 @@ export default function CarteiraInvestimentos() {
               <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Total Investido</span>
               <h3 className="text-2xl font-black text-slate-800 privado">{fmt(totalInvestido)}</h3>
               <span className="text-[10px] text-slate-500 font-medium">Custo do que você ainda tem</span>
-              {totalInvestidoOriginal > totalInvestido + 0.01 && (
-                <span className="text-[10px] text-amber-500 font-medium block privado">{fmt(totalInvestidoOriginal)} investidos originalmente</span>
+              {Math.abs(totalInvestidoOriginal - totalInvestido) > 0.01 && (
+                <span className="text-[10px] text-amber-500 font-medium block privado">{fmt(totalInvestidoOriginal)} de capital novo (exclui lucro reinvestido)</span>
               )}
             </div>
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Wallet size={20} /></div>
@@ -1392,7 +1404,15 @@ export default function CarteiraInvestimentos() {
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CORES[i % CORES.length] }} />
                           <div>
-                            <div className="font-black text-slate-800">{ativo.ticker}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-black text-slate-800">{ativo.ticker}</span>
+                              {!ativo.capital_novo && (
+                                <span title="Comprado com lucro reinvestido, não conta no total investido"
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[9px] font-bold">
+                                  <Coins size={9} /> Reinvestido
+                                </span>
+                              )}
+                            </div>
                             {ativo.nome && <div className="text-xs text-slate-400 truncate max-w-[140px]">{ativo.nome}</div>}
                           </div>
                         </div>
