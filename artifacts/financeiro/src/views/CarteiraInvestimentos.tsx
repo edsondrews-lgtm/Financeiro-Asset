@@ -15,6 +15,7 @@ interface Ativo {
   tipo: "FII" | "Ação";
   setor: string | null;
   quantidade: number;
+  quantidade_original: number;
   preco_medio: number;
   data_compra: string;
   notas: string | null;
@@ -861,7 +862,8 @@ export default function CarteiraInvestimentos() {
     setSalvando(true);
     const { error } = await supabase.from("carteira_investimentos").insert({
       ticker: form.ticker.toUpperCase().trim(), tipo: form.tipo,
-      quantidade: parseFloat(form.quantidade), preco_medio: parseFloat(form.preco_medio),
+      quantidade: parseFloat(form.quantidade), quantidade_original: parseFloat(form.quantidade),
+      preco_medio: parseFloat(form.preco_medio),
       data_compra: form.data_compra, notas: form.notas || null,
     });
     if (error) { setErro("Erro ao salvar: " + error.message); setSalvando(false); return; }
@@ -957,6 +959,7 @@ export default function CarteiraInvestimentos() {
 
   const ativosFiltrados = ativos.filter(a => filtroTipo === "Todos" || a.tipo === filtroTipo);
   const totalInvestido = ativos.reduce((acc, a) => acc + a.preco_medio * a.quantidade, 0);
+  const totalInvestidoOriginal = ativos.reduce((acc, a) => acc + a.preco_medio * (a.quantidade_original ?? a.quantidade), 0);
   const totalAtual = ativos.reduce((acc, a) => acc + (a.valor_total ?? a.preco_medio * a.quantidade), 0);
   const totalLucro = totalAtual - totalInvestido;
   const rentabilidadeTotal = totalInvestido > 0 ? (totalLucro / totalInvestido) * 100 : 0;
@@ -1156,7 +1159,10 @@ export default function CarteiraInvestimentos() {
             <div className="space-y-2">
               <span className="text-slate-400 font-bold text-xs uppercase tracking-wider block">Total Investido</span>
               <h3 className="text-2xl font-black text-slate-800 privado">{fmt(totalInvestido)}</h3>
-              <span className="text-[10px] text-slate-500 font-medium">Custo de aquisição</span>
+              <span className="text-[10px] text-slate-500 font-medium">Custo do que você ainda tem</span>
+              {totalInvestidoOriginal > totalInvestido + 0.01 && (
+                <span className="text-[10px] text-amber-500 font-medium block privado">{fmt(totalInvestidoOriginal)} investidos originalmente</span>
+              )}
             </div>
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Wallet size={20} /></div>
           </div>
@@ -1307,7 +1313,12 @@ export default function CarteiraInvestimentos() {
                           {ativo.tipo}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-right text-slate-600 font-medium">{ativo.quantidade.toLocaleString("pt-BR")}</td>
+                      <td className="px-4 py-4 text-right text-slate-600 font-medium">
+                        {ativo.quantidade.toLocaleString("pt-BR")}
+                        {ativo.quantidade_original > ativo.quantidade && (
+                          <span className="block text-[10px] text-slate-400 font-normal">de {ativo.quantidade_original.toLocaleString("pt-BR")}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-right text-slate-600 privado">{fmt(ativo.preco_medio)}</td>
                       <td className="px-4 py-4 text-right">
                         {ativo.carregando_cotacao ? <span className="text-slate-300 text-xs">carregando…</span>
