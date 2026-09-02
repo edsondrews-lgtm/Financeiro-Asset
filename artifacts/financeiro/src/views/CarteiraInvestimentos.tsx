@@ -57,6 +57,37 @@ function diasEntre(dataInicio: string, dataFim: string): number {
   return Math.max(1, Math.round(ms / 86400000));
 }
 
+interface Alocacao {
+  debito: MovimentoCorretora;
+  credito: MovimentoCorretora;
+  valor: number;
+}
+
+// Rastreia de onde veio o dinheiro de cada compra/saque, sem precisar de nota
+// manual: percorre os lançamentos em ordem cronológica e consome primeiro o
+// dinheiro mais antigo ainda disponível (FIFO) — o mesmo critério que a
+// Receita usa pra apurar custo médio, então também serve de referência pra IR.
+function calcularAlocacoesFIFO(movimentos: MovimentoCorretora[]): Alocacao[] {
+  const ordenados = [...movimentos].sort((a, b) =>
+    a.data_movimento.localeCompare(b.data_movimento) || a.id.localeCompare(b.id));
+  const creditos = ordenados.filter(m => Number(m.valor) > 0).map(m => ({ mov: m, restante: Number(m.valor) }));
+  const alocacoes: Alocacao[] = [];
+
+  for (const deb of ordenados) {
+    if (Number(deb.valor) >= 0) continue;
+    let restanteDebito = Math.abs(Number(deb.valor));
+    for (const cred of creditos) {
+      if (restanteDebito <= 0.005) break;
+      if (cred.restante <= 0.005) continue;
+      const usado = Math.min(cred.restante, restanteDebito);
+      alocacoes.push({ debito: deb, credito: cred.mov, valor: parseFloat(usado.toFixed(2)) });
+      cred.restante -= usado;
+      restanteDebito -= usado;
+    }
+  }
+  return alocacoes;
+}
+
 const formVazio = {
   ticker: "",
   tipo: "FII" as "FII" | "Ação",
@@ -387,8 +418,73 @@ function AbaHistorico({ vendas, onSelecionar }: { vendas: Venda[]; onSelecionar:
   );
 }
 
+// ─── Aba: Origem do Capital ──────────────────────────────────────────────────
+
+function AbaOrigemCapital({ movimentos }: { movimentos: MovimentoCorretora[] }) {
+  const alocacoes = calcularAlocacoesFIFO(movimentos);
+  const debitos = movimentos
+    .filter(m => Number(m.valor) < 0)
+    .sort((a, b) => b.data_movimento.localeCompare(a.data_movimento));
+
+  if (debitos.length === 0) {
+    return (
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm text-center py-16 text-slate-400">
+        <Landmark size={36} className="mx-auto mb-3 text-slate-200" />
+        <p className="text-sm font-medium">Nenhuma compra ou saque usando o saldo da corretora ainda.</p>
+        <p className="text-xs mt-1 text-slate-300">Quando você comprar um ativo com o saldo, ou sacar, o rastreio da origem aparece aqui — automático, sem precisar anotar nada.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
+        Calculado automaticamente pela ordem cronológica dos lançamentos: o dinheiro mais antigo parado na corretora é sempre o primeiro a ser usado (FIFO).
+      </div>
+      {debitos.map(deb => {
+        const origens = alocacoes.filter(a => a.debito.id === deb.id);
+        const totalDebito = Math.abs(Number(deb.valor));
+        return (
+          <div key={deb.id} className="bg-white border border-slate-100 rounded-2xl shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className={`p-2 rounded-lg ${deb.tipo === "compra" ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-600"}`}>
+                  {deb.tipo === "compra" ? <Wallet size={14} /> : <ArrowUpCircle size={14} />}
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-slate-800">{deb.descricao || (deb.tipo === "compra" ? "Compra" : "Saque")}</div>
+                  <div className="text-[10px] text-slate-400">{fmtData(deb.data_movimento)}</div>
+                </div>
+              </div>
+              <div className="text-sm font-black text-slate-700 privado">{fmt(totalDebito)}</div>
+            </div>
+            {origens.length === 0 ? (
+              <p className="text-xs text-slate-300 pl-2">Não foi possível rastrear a origem (saldo de antes do controle começar).</p>
+            ) : (
+              <div className="space-y-1.5 pl-2 border-l-2 border-slate-100 ml-4">
+                {origens.map((o, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      {o.credito.tipo === "venda"
+                        ? <DollarSign size={11} className="text-emerald-500 shrink-0" />
+                        : <ArrowDownCircle size={11} className="text-blue-400 shrink-0" />}
+                      <span>{o.credito.descricao || (o.credito.tipo === "venda" ? "Venda de ativo" : "Depósito")}</span>
+                      <span className="text-slate-300">· {fmtData(o.credito.data_movimento)}</span>
+                    </div>
+                    <span className="font-bold text-slate-600 privado shrink-0">{fmt(o.valor)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CarteiraInvestimentos() {
-  const [aba, setAba] = useState<"carteira" | "historico">("carteira");
+  const [aba, setAba] = useState<"carteira" | "historico" | "origem">("carteira");
   const [ativos, setAtivos] = useState<AtivoComCotacao[]>([]);
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [movimentos, setMovimentos] = useState<MovimentoCorretora[]>([]);
@@ -607,6 +703,10 @@ export default function CarteiraInvestimentos() {
           className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${aba === "historico" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"}`}>
           <History size={12} /> Histórico de Vendas {vendas.length > 0 && `(${vendas.length})`}
         </button>
+        <button onClick={() => setAba("origem")}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${aba === "origem" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"}`}>
+          <Landmark size={12} /> Origem do Capital
+        </button>
       </div>
 
       {/* Alertas de sistema */}
@@ -615,6 +715,8 @@ export default function CarteiraInvestimentos() {
 
       {aba === "historico" ? (
         <AbaHistorico vendas={vendas} onSelecionar={setVendaSelecionada} />
+      ) : aba === "origem" ? (
+        <AbaOrigemCapital movimentos={movimentos} />
       ) : (
       <>
       {/* Alertas de investimento */}
@@ -657,7 +759,7 @@ export default function CarteiraInvestimentos() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Preço médio (R$) *</label>
-                <input type="number" placeholder="10.50" min="0" step="0.01" value={form.preco_medio}
+                <input type="number" placeholder="10.5000" min="0" step="0.0001" value={form.preco_medio}
                   onChange={e => setForm({ ...form, preco_medio: e.target.value })}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-emerald-400" required />
               </div>
