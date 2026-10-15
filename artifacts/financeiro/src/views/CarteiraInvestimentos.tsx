@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import {
   TrendingUp, TrendingDown, Plus, X, RefreshCw, Wallet, PieChart, AlertTriangle,
   History, Landmark, ArrowDownCircle, ArrowUpCircle, DollarSign, Calendar, Clock, Check,
-  Pencil, Trash2, Coins,
+  Pencil, Trash2, Coins, ChevronDown, ChevronRight, Layers,
 } from "lucide-react";
 import { PieChart as RechartsPie, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { buscarCotacoesBrapi } from "../lib/brapi";
@@ -72,6 +72,39 @@ interface DadosProvento {
   data_pagamento: string;
   observacao: string | null;
 }
+
+// Um lote = uma compra/aporte dentro de uma posição. A posição guarda só o
+// agregado (quantidade e preço médio ponderado); o detalhe fica aqui.
+interface Lote {
+  id: string;
+  ativo_id: string;
+  quantidade: number;
+  preco: number;
+  data_aporte: string;
+  origem: "novo" | "corretora";
+  notas: string | null;
+}
+
+interface DadosAporte {
+  quantidade: number;
+  preco: number;
+  data_aporte: string;
+  origem: "novo" | "corretora";
+  notas: string | null;
+  // Se preenchido, vira o preço médio da posição exatamente como está na
+  // corretora, em vez do cálculo ponderado.
+  preco_medio_corretora: number | null;
+}
+
+// Preço médio ponderado: vender não altera o médio, então a conta parte da
+// quantidade que ainda resta na posição.
+function precoMedioPonderado(qtdAtual: number, pmAtual: number, qtdNova: number, precoNovo: number): number {
+  const total = qtdAtual + qtdNova;
+  if (total <= 0) return precoNovo;
+  return parseFloat(((qtdAtual * pmAtual + qtdNova * precoNovo) / total).toFixed(4));
+}
+
+const fmtPM = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 });
 
 function diasEntre(dataInicio: string, dataFim: string): number {
   const ms = new Date(dataFim + "T00:00:00").getTime() - new Date(dataInicio + "T00:00:00").getTime();
@@ -212,6 +245,138 @@ function ModalEditarAtivo({ ativo, onFechar, onSalvar }: {
           <button type="submit" disabled={salvando}
             className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
             {salvando ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Modal: Aportar em ativo ────────────────────────────────────────────────
+
+function ModalAportar({ ativo, saldoCorretora, onFechar, onSalvar }: {
+  ativo: AtivoComCotacao;
+  saldoCorretora: number;
+  onFechar: () => void;
+  onSalvar: (dados: DadosAporte) => Promise<{ error: string | null }>;
+}) {
+  const [quantidade, setQuantidade] = useState("");
+  const [preco, setPreco] = useState((ativo.preco_atual ?? ativo.preco_medio).toString());
+  const [data, setData] = useState(new Date().toISOString().split("T")[0]);
+  // Posição que já é só de lucro reinvestido sugere sair do saldo da corretora.
+  const [origem, setOrigem] = useState<"novo" | "corretora">(ativo.capital_novo ? "novo" : "corretora");
+  const [notas, setNotas] = useState("");
+  const [pmCorretora, setPmCorretora] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const qtd = parseFloat(quantidade) || 0;
+  const precoNum = parseFloat(preco) || 0;
+  const custo = qtd * precoNum;
+  const pmInformado = parseFloat(pmCorretora);
+  const pmCalculado = precoMedioPonderado(ativo.quantidade, ativo.preco_medio, qtd, precoNum);
+  const novoPM = !isNaN(pmInformado) && pmInformado > 0 ? pmInformado : pmCalculado;
+  const saldoInsuficiente = origem === "corretora" && custo > saldoCorretora + 0.005;
+
+  async function confirmar(e: React.FormEvent) {
+    e.preventDefault();
+    if (qtd <= 0) { setErro("Informe a quantidade comprada."); return; }
+    if (precoNum <= 0) { setErro("Informe o preço pago por unidade."); return; }
+    setSalvando(true); setErro(null);
+    const res = await onSalvar({
+      quantidade: qtd, preco: precoNum, data_aporte: data, origem,
+      notas: notas.trim() || null,
+      preco_medio_corretora: !isNaN(pmInformado) && pmInformado > 0 ? pmInformado : null,
+    });
+    setSalvando(false);
+    if (res.error) { setErro(res.error); return; }
+    onFechar();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <form onSubmit={confirmar} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Aportar em {ativo.ticker}</h3>
+            <p className="text-xs text-slate-400">Hoje: {ativo.quantidade.toLocaleString("pt-BR")} un. · P. médio {fmtPM(ativo.preco_medio)}</p>
+          </div>
+          <button type="button" onClick={onFechar} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        {erro && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">{erro}</div>}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Quantidade</label>
+            <input type="number" min="0" step="any" value={quantidade} onChange={e => setQuantidade(e.target.value)} autoFocus
+              placeholder="Ex: 11"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Preço pago (R$)</label>
+            <input type="number" min="0" step="0.0001" value={preco} onChange={e => setPreco(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Data</label>
+          <input type="date" value={data} onChange={e => setData(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">De onde vem o dinheiro?</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setOrigem("novo")}
+              className={`p-3 rounded-xl border text-left transition-all ${origem === "novo" ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+              <div className="text-xs font-bold text-slate-700">Dinheiro novo</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Não mexe no saldo</div>
+            </button>
+            <button type="button" onClick={() => setOrigem("corretora")}
+              className={`p-3 rounded-xl border text-left transition-all ${origem === "corretora" ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+              <div className="text-xs font-bold text-slate-700">Saldo da corretora</div>
+              <div className="text-[10px] text-slate-400 mt-0.5 privado">Disponível: {fmt(saldoCorretora)}</div>
+            </button>
+          </div>
+          {saldoInsuficiente && (
+            <p className="text-[11px] text-red-500 mt-1.5">Saldo insuficiente pra esse aporte ({fmt(custo)}).</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Anotação</label>
+          <input type="text" value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ex: reinvestindo dividendo do BBAS3"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Preço médio na corretora (opcional)</label>
+          <input type="number" min="0" step="0.0001" value={pmCorretora} onChange={e => setPmCorretora(e.target.value)}
+            placeholder={`Calculado: ${pmCalculado.toFixed(4)}`}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+          <p className="text-[10px] text-slate-400 mt-1">Preencha se o da corretora vier um pouco diferente do calculado, pra ficar idêntico.</p>
+        </div>
+
+        <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Nova quantidade</span>
+            <span className="font-bold text-slate-700">{(ativo.quantidade + qtd).toLocaleString("pt-BR")} un.</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Novo preço médio</span>
+            <span className="font-black text-emerald-600">{fmtPM(novoPM)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Valor do aporte</span>
+            <span className="font-bold text-slate-700">{fmt(custo)}</span>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onFechar} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+          <button type="submit" disabled={salvando || saldoInsuficiente}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-all">
+            {salvando ? "Registrando..." : "Confirmar aporte"}
           </button>
         </div>
       </form>
@@ -860,6 +1025,10 @@ export default function CarteiraInvestimentos() {
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [movimentos, setMovimentos] = useState<MovimentoCorretora[]>([]);
   const [proventos, setProventos] = useState<Provento[]>([]);
+  const [lotes, setLotes] = useState<Lote[]>([]);
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const [ativoAportando, setAtivoAportando] = useState<AtivoComCotacao | null>(null);
+  const [unificando, setUnificando] = useState<string | null>(null);
   const [form, setForm] = useState(formVazio);
   const [salvando, setSalvando] = useState(false);
   const [removendo, setRemovendo] = useState<string | null>(null);
@@ -876,14 +1045,20 @@ export default function CarteiraInvestimentos() {
   const [proventoEditando, setProventoEditando] = useState<Provento | null>(null);
   const [movimentoEditando, setMovimentoEditando] = useState<MovimentoCorretora | null>(null);
 
-  async function carregarAtivos() {
+  async function carregarAtivos(): Promise<AtivoComCotacao[]> {
     const { data, error } = await supabase
       .from("carteira_investimentos")
       .select("*")
       .order("tipo", { ascending: true })
       .order("ticker", { ascending: true });
-    if (error) { setErro("Erro ao carregar: " + error.message); return; }
+    if (error) { setErro("Erro ao carregar: " + error.message); return []; }
     setAtivos(data || []);
+    return data || [];
+  }
+
+  async function carregarLotes() {
+    const { data } = await supabase.from("carteira_aportes").select("*").order("data_aporte", { ascending: true });
+    setLotes(data || []);
   }
 
   async function carregarVendas() {
@@ -933,7 +1108,7 @@ export default function CarteiraInvestimentos() {
     }
   }
 
-  useEffect(() => { carregarAtivos(); carregarVendas(); carregarMovimentos(); carregarProventos(); }, []);
+  useEffect(() => { carregarAtivos(); carregarVendas(); carregarMovimentos(); carregarProventos(); carregarLotes(); }, []);
   useEffect(() => {
     if (ativos.length > 0 && ativos[0].preco_atual === undefined) buscarCotacoes(ativos);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -947,33 +1122,172 @@ export default function CarteiraInvestimentos() {
     if (!form.ticker || !form.quantidade || !form.preco_medio || !form.data_compra) {
       setErro("Preencha todos os campos obrigatórios."); return;
     }
-    const custoTotal = parseFloat(form.quantidade) * parseFloat(form.preco_medio);
+    const ticker = form.ticker.toUpperCase().trim();
+    const qtdForm = parseFloat(form.quantidade);
+    const precoForm = parseFloat(form.preco_medio);
+    const custoTotal = qtdForm * precoForm;
     if (form.origem === "corretora" && custoTotal > saldoCorretora) {
       setErro(`Saldo da corretora insuficiente (disponível: ${fmt(saldoCorretora)}, necessário: ${fmt(custoTotal)}).`);
       return;
     }
+
+    // Já tem esse ticker: soma na posição em vez de criar uma linha repetida.
+    const existente = ativos.find(a => a.ticker === ticker);
+    if (existente) {
+      if (!confirm(`Você já tem ${ticker} na carteira (${existente.quantidade.toLocaleString("pt-BR")} un.).\n\nSomar essa compra à posição existente, recalculando o preço médio?`)) return;
+      setSalvando(true);
+      const res = await aplicarAporte(existente, {
+        quantidade: qtdForm, preco: precoForm, data_aporte: form.data_compra,
+        origem: form.origem, notas: form.notas || null, preco_medio_corretora: null,
+      });
+      setSalvando(false);
+      if (res.error) { setErro(res.error); return; }
+      setSucesso(`Compra somada à posição de ${ticker}!`);
+      setForm(formVazio); setMostrarForm(false);
+      setTimeout(() => setSucesso(null), 4000);
+      return;
+    }
+
     setSalvando(true);
-    const { error } = await supabase.from("carteira_investimentos").insert({
-      ticker: form.ticker.toUpperCase().trim(), tipo: form.tipo,
-      quantidade: parseFloat(form.quantidade), quantidade_original: parseFloat(form.quantidade),
-      preco_medio: parseFloat(form.preco_medio),
+    const { data: novo, error } = await supabase.from("carteira_investimentos").insert({
+      ticker, tipo: form.tipo,
+      quantidade: qtdForm, quantidade_original: qtdForm,
+      preco_medio: precoForm, capital_novo: form.origem === "novo",
       data_compra: form.data_compra, notas: form.notas || null,
+    }).select().single();
+    if (error || !novo) { setErro("Erro ao salvar: " + error?.message); setSalvando(false); return; }
+
+    await supabase.from("carteira_aportes").insert({
+      ativo_id: novo.id, quantidade: qtdForm, preco: precoForm, data_aporte: form.data_compra,
+      origem: form.origem, notas: form.notas || null,
     });
-    if (error) { setErro("Erro ao salvar: " + error.message); setSalvando(false); return; }
 
     if (form.origem === "corretora") {
       await supabase.from("carteira_corretora_movimentos").insert({
         tipo: "compra", valor: -parseFloat(custoTotal.toFixed(2)),
-        descricao: `Compra de ${form.quantidade} ${form.ticker.toUpperCase()}`, data_movimento: form.data_compra,
+        descricao: `Compra de ${form.quantidade} ${ticker}`, data_movimento: form.data_compra,
       });
       await carregarMovimentos();
     }
 
     setSalvando(false);
-    setSucesso(`${form.ticker.toUpperCase()} cadastrado com sucesso!`);
+    setSucesso(`${ticker} cadastrado com sucesso!`);
     setForm(formVazio); setMostrarForm(false);
-    await carregarAtivos();
+    await Promise.all([carregarAtivos(), carregarLotes()]);
     setTimeout(() => setSucesso(null), 4000);
+  }
+
+  // Soma uma compra numa posição que já existe: quantidade acumula, o preço
+  // médio é recalculado (ou fixado no valor da corretora) e a compra fica
+  // registrada como um lote — mesmo fluxo do dinheiro (saldo da corretora)
+  // que o cadastro de ativo novo já usa.
+  async function aplicarAporte(ativo: Ativo, d: DadosAporte): Promise<{ error: string | null }> {
+    const custo = parseFloat((d.quantidade * d.preco).toFixed(2));
+    if (d.origem === "corretora" && custo > saldoCorretora + 0.005) {
+      return { error: `Saldo da corretora insuficiente (disponível: ${fmt(saldoCorretora)}, necessário: ${fmt(custo)}).` };
+    }
+
+    const novoPM = d.preco_medio_corretora ?? precoMedioPonderado(ativo.quantidade, ativo.preco_medio, d.quantidade, d.preco);
+    const dataCompra = d.data_aporte < ativo.data_compra ? d.data_aporte : ativo.data_compra;
+
+    const { error: errA } = await supabase.from("carteira_investimentos").update({
+      quantidade: parseFloat((ativo.quantidade + d.quantidade).toFixed(8)),
+      quantidade_original: parseFloat(((ativo.quantidade_original ?? ativo.quantidade) + d.quantidade).toFixed(8)),
+      preco_medio: novoPM,
+      data_compra: dataCompra,
+      capital_novo: ativo.capital_novo || d.origem === "novo",
+    }).eq("id", ativo.id);
+    if (errA) return { error: "Erro ao atualizar a posição: " + errA.message };
+
+    const { error: errL } = await supabase.from("carteira_aportes").insert({
+      ativo_id: ativo.id, quantidade: d.quantidade, preco: d.preco,
+      data_aporte: d.data_aporte, origem: d.origem, notas: d.notas,
+    });
+    if (errL) return { error: "Posição atualizada, mas falhou ao registrar o lote: " + errL.message };
+
+    if (d.origem === "corretora") {
+      const { error: errM } = await supabase.from("carteira_corretora_movimentos").insert({
+        tipo: "compra", valor: -custo,
+        descricao: `Aporte de ${d.quantidade} ${ativo.ticker}`, data_movimento: d.data_aporte,
+      });
+      if (errM) return { error: "Aporte registrado, mas falhou ao debitar o saldo da corretora: " + errM.message };
+    }
+
+    const atualizados = await carregarAtivos();
+    await Promise.all([carregarLotes(), carregarMovimentos()]);
+    buscarCotacoes(atualizados);
+    return { error: null };
+  }
+
+  async function aoAportar(d: DadosAporte): Promise<{ error: string | null }> {
+    if (!ativoAportando) return { error: "Nada selecionado." };
+    const res = await aplicarAporte(ativoAportando, d);
+    if (!res.error) {
+      setSucesso(`Aporte em ${ativoAportando.ticker} registrado!`);
+      setTimeout(() => setSucesso(null), 4000);
+    }
+    return res;
+  }
+
+  // Junta posições repetidas do mesmo ticker (criadas antes de existir o
+  // "Aportar") numa só: soma quantidades, média ponderada, e reaponta lotes,
+  // vendas e proventos pra posição que permanece.
+  async function unificarPosicoes(ticker: string) {
+    const grupo = ativos
+      .filter(a => a.ticker === ticker)
+      .sort((a, b) => a.data_compra.localeCompare(b.data_compra) || a.id.localeCompare(b.id));
+    if (grupo.length < 2) return;
+    const [base, ...outros] = grupo;
+
+    const quantidade = parseFloat(grupo.reduce((s, a) => s + a.quantidade, 0).toFixed(8));
+    const quantidadeOriginal = parseFloat(grupo.reduce((s, a) => s + (a.quantidade_original ?? a.quantidade), 0).toFixed(8));
+    const custo = grupo.reduce((s, a) => s + a.quantidade * a.preco_medio, 0);
+    const precoMedio = quantidade > 0 ? parseFloat((custo / quantidade).toFixed(4)) : base.preco_medio;
+    const dataCompra = grupo.reduce((min, a) => (a.data_compra < min ? a.data_compra : min), base.data_compra);
+    const notas = [...new Set(grupo.map(a => a.notas).filter((n): n is string => !!n))].join(" · ") || null;
+    const capitalNovo = grupo.some(a => a.capital_novo);
+
+    if (!confirm(
+      `Unificar ${grupo.length} posições de ${ticker} numa só?\n\n` +
+      `Resultado: ${quantidade.toLocaleString("pt-BR")} un. · preço médio ${fmtPM(precoMedio)}\n` +
+      `(as linhas repetidas serão removidas; o histórico de aportes e vendas é preservado)`
+    )) return;
+
+    setUnificando(ticker); setErro(null);
+    for (const outro of outros) {
+      const { error: e1 } = await supabase.from("carteira_aportes").update({ ativo_id: base.id }).eq("ativo_id", outro.id);
+      const { error: e2 } = await supabase.from("carteira_vendas").update({ ativo_id: base.id }).eq("ativo_id", outro.id);
+      const { error: e3 } = await supabase.from("carteira_proventos").update({ ativo_id: base.id }).eq("ativo_id", outro.id);
+      if (e1 || e2 || e3) {
+        setErro("Erro ao mover o histórico: " + (e1 || e2 || e3)!.message + ". Nada foi apagado.");
+        setUnificando(null); return;
+      }
+      const { error: eDel } = await supabase.from("carteira_investimentos").delete().eq("id", outro.id);
+      if (eDel) { setErro("Erro ao remover a linha repetida: " + eDel.message); setUnificando(null); return; }
+    }
+    const { error: eUp } = await supabase.from("carteira_investimentos").update({
+      quantidade, quantidade_original: quantidadeOriginal, preco_medio: precoMedio,
+      data_compra: dataCompra, notas, capital_novo: capitalNovo,
+    }).eq("id", base.id);
+    if (eUp) {
+      setErro(`As linhas repetidas foram removidas, mas falhou ao gravar o total. Ajuste ${ticker} em "Editar" para ${quantidade} un. a ${precoMedio}. Erro: ${eUp.message}`);
+      setUnificando(null); await carregarAtivos(); return;
+    }
+
+    const atualizados = await carregarAtivos();
+    await carregarLotes();
+    buscarCotacoes(atualizados);
+    setUnificando(null);
+    setSucesso(`${ticker} unificado: ${quantidade.toLocaleString("pt-BR")} un. a ${fmtPM(precoMedio)}.`);
+    setTimeout(() => setSucesso(null), 4000);
+  }
+
+  function alternarExpandido(id: string) {
+    setExpandidos(prev => {
+      const novo = new Set(prev);
+      if (novo.has(id)) novo.delete(id); else novo.add(id);
+      return novo;
+    });
   }
 
   async function removerAtivo(id: string, ticker: string) {
@@ -989,6 +1303,14 @@ export default function CarteiraInvestimentos() {
     if (!ativoEditando) return { error: "Nada selecionado." };
     const { error } = await supabase.from("carteira_investimentos").update(dados).eq("id", ativoEditando.id);
     if (error) return { error: error.message };
+    // A origem de cada lote é a fonte do "capital originalmente investido";
+    // alternar capital novo/reinvestido aqui vale pra todos os lotes da posição.
+    if (dados.capital_novo !== ativoEditando.capital_novo) {
+      await supabase.from("carteira_aportes")
+        .update({ origem: dados.capital_novo ? "novo" : "corretora" })
+        .eq("ativo_id", ativoEditando.id);
+      await carregarLotes();
+    }
     await carregarAtivos();
     return { error: null };
   }
@@ -1060,7 +1382,16 @@ export default function CarteiraInvestimentos() {
 
   const ativosFiltrados = ativos.filter(a => filtroTipo === "Todos" || a.tipo === filtroTipo);
   const totalInvestido = ativos.reduce((acc, a) => acc + a.preco_medio * a.quantidade, 0);
-  const totalInvestidoOriginal = ativos.filter(a => a.capital_novo).reduce((acc, a) => acc + a.preco_medio * (a.quantidade_original ?? a.quantidade), 0);
+  // Capital de fora realmente colocado: soma dos lotes de origem "novo". Posição
+  // sem lotes (ainda não migrada) cai na regra antiga, pela bandeira da posição.
+  const totalInvestidoOriginal = ativos.reduce((acc, a) => {
+    const lotesDoAtivo = lotes.filter(l => l.ativo_id === a.id);
+    if (lotesDoAtivo.length === 0) {
+      return acc + (a.capital_novo ? a.preco_medio * (a.quantidade_original ?? a.quantidade) : 0);
+    }
+    return acc + lotesDoAtivo.filter(l => l.origem === "novo").reduce((s, l) => s + l.quantidade * l.preco, 0);
+  }, 0);
+  const contagemPorTicker = ativos.reduce<Record<string, number>>((m, a) => { m[a.ticker] = (m[a.ticker] ?? 0) + 1; return m; }, {});
   const totalAtual = ativos.reduce((acc, a) => acc + (a.valor_total ?? a.preco_medio * a.quantidade), 0);
   const totalLucro = totalAtual - totalInvestido;
   const rentabilidadeTotal = totalInvestido > 0 ? (totalLucro / totalInvestido) * 100 : 0;
@@ -1398,10 +1729,19 @@ export default function CarteiraInvestimentos() {
               <tbody className="divide-y divide-slate-50">
                 {ativosFiltrados.map((ativo, i) => {
                   const peso = totalAtual > 0 ? ((ativo.valor_total ?? ativo.preco_medio * ativo.quantidade) / totalAtual) * 100 : 0;
+                  const lotesDoAtivo = lotes.filter(l => l.ativo_id === ativo.id);
+                  const expandido = expandidos.has(ativo.id);
+                  const repetido = (contagemPorTicker[ativo.ticker] ?? 0) > 1;
                   return (
-                    <tr key={ativo.id} className="hover:bg-slate-50 transition-colors">
+                    <Fragment key={ativo.id}>
+                    <tr className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
+                          <button onClick={() => alternarExpandido(ativo.id)}
+                            title={expandido ? "Esconder aportes" : "Ver aportes desta posição"}
+                            className="p-0.5 -ml-1 text-slate-300 hover:text-slate-600 transition-colors">
+                            {expandido ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </button>
                           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CORES[i % CORES.length] }} />
                           <div>
                             <div className="flex items-center gap-1.5">
@@ -1461,6 +1801,17 @@ export default function CarteiraInvestimentos() {
                       </td>
                       <td className="px-4 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {repetido && (
+                            <button onClick={() => unificarPosicoes(ativo.ticker)} disabled={unificando === ativo.ticker}
+                              title={`Há ${contagemPorTicker[ativo.ticker]} linhas de ${ativo.ticker} — juntar numa posição só`}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-bold transition-colors disabled:opacity-50">
+                              <Layers size={11} /> {unificando === ativo.ticker ? "Unificando…" : "Unificar"}
+                            </button>
+                          )}
+                          <button onClick={() => setAtivoAportando(ativo)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold transition-colors">
+                            <Plus size={11} /> Aportar
+                          </button>
                           <button onClick={() => setAtivoVendendo(ativo)}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition-colors">
                             <DollarSign size={11} /> Vender
@@ -1477,6 +1828,64 @@ export default function CarteiraInvestimentos() {
                         </div>
                       </td>
                     </tr>
+                    {expandido && (
+                      <tr className="bg-slate-50/70">
+                        <td colSpan={12} className="px-6 py-4">
+                          <div className="ml-6">
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                              Aportes em {ativo.ticker} ({lotesDoAtivo.length})
+                            </div>
+                            {lotesDoAtivo.length === 0 ? (
+                              <p className="text-xs text-slate-400">Nenhum aporte registrado ainda.</p>
+                            ) : (
+                              <table className="w-full max-w-3xl text-xs">
+                                <thead>
+                                  <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                                    <th className="text-left py-1.5 pr-4">Data</th>
+                                    <th className="text-right py-1.5 pr-4">Qtd</th>
+                                    <th className="text-right py-1.5 pr-4">Preço</th>
+                                    <th className="text-right py-1.5 pr-4">Valor</th>
+                                    <th className="text-left py-1.5 pr-4">Origem</th>
+                                    <th className="text-left py-1.5">Anotação</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {lotesDoAtivo.map(l => (
+                                    <tr key={l.id}>
+                                      <td className="py-1.5 pr-4 text-slate-500">{fmtData(l.data_aporte)}</td>
+                                      <td className="py-1.5 pr-4 text-right text-slate-700 font-medium">{Number(l.quantidade).toLocaleString("pt-BR")}</td>
+                                      <td className="py-1.5 pr-4 text-right text-slate-600 privado">{fmtPM(Number(l.preco))}</td>
+                                      <td className="py-1.5 pr-4 text-right text-slate-700 font-medium privado">{fmt(Number(l.quantidade) * Number(l.preco))}</td>
+                                      <td className="py-1.5 pr-4">
+                                        {l.origem === "novo"
+                                          ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">Capital novo</span>
+                                          : <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold">Reinvestido</span>}
+                                      </td>
+                                      <td className="py-1.5 text-slate-500">{l.notas || "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t border-slate-200 font-bold text-slate-700">
+                                    <td className="py-1.5 pr-4 text-[10px] uppercase tracking-wider text-slate-400">Comprado</td>
+                                    <td className="py-1.5 pr-4 text-right">{lotesDoAtivo.reduce((s, l) => s + Number(l.quantidade), 0).toLocaleString("pt-BR")}</td>
+                                    <td></td>
+                                    <td className="py-1.5 pr-4 text-right privado">{fmt(lotesDoAtivo.reduce((s, l) => s + Number(l.quantidade) * Number(l.preco), 0))}</td>
+                                    <td colSpan={2}></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            )}
+                            {ativo.quantidade_original > ativo.quantidade && (
+                              <p className="text-[10px] text-slate-400 mt-2">
+                                Você já vendeu {(ativo.quantidade_original - ativo.quantidade).toLocaleString("pt-BR")} un. desta posição — hoje restam {ativo.quantidade.toLocaleString("pt-BR")}.
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -1487,6 +1896,10 @@ export default function CarteiraInvestimentos() {
       </>
       )}
 
+      {ativoAportando && (
+        <ModalAportar ativo={ativoAportando} saldoCorretora={saldoCorretora}
+          onFechar={() => setAtivoAportando(null)} onSalvar={aoAportar} />
+      )}
       {ativoVendendo && (
         <ModalVender ativo={ativoVendendo} onFechar={() => setAtivoVendendo(null)} onSalvo={aoVender} />
       )}
