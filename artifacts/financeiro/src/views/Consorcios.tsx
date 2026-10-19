@@ -21,6 +21,17 @@ interface Consorcio {
   data_inicio: string
   data_contemplacao: string | null
   credito_disponivel: number | null
+  percentual_cdi?: number | null
+}
+
+// Saldo real do crédito parado, como informado no extrato da administradora.
+interface SaldoRegistro {
+  id: string
+  consorcio_id: string
+  data: string
+  valor: number
+  observacao: string | null
+  created_at: string
 }
 
 interface Rendimento {
@@ -220,28 +231,59 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   // disponível/rendimento continua escondido até sair e voltar da tela.
   const [consorcioAtual, setConsorcioAtual] = useState<Consorcio>(consorcio)
 
-  // Taxa CDI atual (%/dia), pro crédito parado rendendo 100% do CDI.
-  const [cdiDiario, setCdiDiario] = useState(0)
+  // Saldos reais informados (extrato da administradora). O mais recente por
+  // data é a referência da estimativa; `saldosIndisponivel` = migração 020
+  // ainda não rodou no Supabase.
+  const [saldos, setSaldos] = useState<SaldoRegistro[]>([])
+  const [saldosIndisponivel, setSaldosIndisponivel] = useState(false)
+  const [saldoData, setSaldoData] = useState(new Date().toISOString().split('T')[0])
+  const [saldoValor, setSaldoValor] = useState('')
+  const [saldoObs, setSaldoObs] = useState('')
+  const [salvandoSaldo, setSalvandoSaldo] = useState(false)
+  const [pctCdiInput, setPctCdiInput] = useState('')
+
+  // CDI diário (%/dia) por data, desde o último saldo real, e a taxa mais
+  // recente (pra projetar pra frente).
+  const [cdiMap, setCdiMap] = useState<Map<string, number>>(new Map())
+  const [cdiDiarioBruto, setCdiDiarioBruto] = useState(0)
   const [carregandoCDI, setCarregandoCDI] = useState(false)
 
+  // Último saldo real (por data; empate → o lançado por último). Sem registros
+  // (migração pendente), cai no crédito gravado na contemplação.
+  const saldoReferencia: { data: string; valor: number } | null = (() => {
+    if (saldos.length > 0) return { data: saldos[0].data, valor: Number(saldos[0].valor) }
+    if (consorcioAtual.credito_disponivel != null) {
+      return {
+        data: consorcioAtual.data_contemplacao ?? new Date().toISOString().split('T')[0],
+        valor: Number(consorcioAtual.credito_disponivel),
+      }
+    }
+    return null
+  })()
+  const refData = saldoReferencia?.data
+  const percentualCdi = Number(consorcioAtual.percentual_cdi ?? 100) || 100
+
+  useEffect(() => { setPctCdiInput(String(percentualCdi)) }, [percentualCdi])
+
   useEffect(() => {
-    if (consorcioAtual.credito_disponivel == null) return
-    const dataInicio = consorcioAtual.data_contemplacao
-      ? new Date(consorcioAtual.data_contemplacao + 'T12:00:00')
-      : new Date()
+    if (!refData) return
     setCarregandoCDI(true)
-    buscarHistoricoCDI(dataInicio)
+    buscarHistoricoCDI(new Date(refData + 'T12:00:00'))
       .then(map => {
+        setCdiMap(map)
         const entries = [...map.entries()].sort(([a], [b]) => b.localeCompare(a))
-        if (entries.length > 0) setCdiDiario(entries[0][1])
+        if (entries.length > 0) setCdiDiarioBruto(entries[0][1])
       })
       .catch(() => {})
       .finally(() => setCarregandoCDI(false))
-  }, [consorcioAtual.credito_disponivel, consorcioAtual.data_contemplacao])
+  }, [refData])
+
+  // Taxa diária efetivamente paga = CDI × % do CDI da administradora.
+  const cdiDiario = cdiDiarioBruto * (percentualCdi / 100)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const [{ data: consorcioData }, { data: parcelaData, error }, { data: lancesData }, { data: rendData_ }] = await Promise.all([
+    const [{ data: consorcioData }, { data: parcelaData, error }, { data: lancesData }, { data: rendData_ }, { data: saldosData, error: errSaldos }] = await Promise.all([
       supabase.from('consorcios').select('*').eq('id', consorcio.id).single(),
       supabase.from('parcelas_calculadas').select('*')
         .eq('consorcio_id', consorcio.id)
@@ -252,12 +294,18 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
       supabase.from('consorcio_rendimentos').select('*')
         .eq('consorcio_id', consorcio.id)
         .order('data', { ascending: false }),
+      supabase.from('consorcio_saldos').select('*')
+        .eq('consorcio_id', consorcio.id)
+        .order('data', { ascending: false })
+        .order('created_at', { ascending: false }),
     ])
     if (error) { setErro('Erro: ' + error.message); setCarregando(false); return }
     if (consorcioData) setConsorcioAtual(consorcioData)
     setParcelas(parcelaData || [])
     setLances(lancesData || [])
     setRendimentos(rendData_ || [])
+    setSaldosIndisponivel(!!errSaldos)
+    setSaldos(errSaldos ? [] : (saldosData || []))
     setCarregando(false)
   }, [consorcio.id])
 
@@ -285,21 +333,41 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   // Projeção do crédito parado rendendo 100% do CDI, compondo dia a dia a
   // partir da taxa atual (mantida constante pra frente — é uma estimativa,
   // não uma previsão do CDI futuro).
+  // Saldo estimado HOJE: último saldo real composto pelo CDI (× % que a
+  // administradora paga) em cada dia útil publicado depois da data dele. O dia
+  // de hoje fica de fora — a taxa só é divulgada no fim do dia.
+  const hojeLocal = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })()
+  const saldoBase = saldoReferencia?.valor ?? 0
+  let fatorDesdeReferencia = 1
+  if (saldoReferencia) {
+    for (const [dia, taxa] of cdiMap) {
+      if (dia > saldoReferencia.data && dia < hojeLocal) {
+        fatorDesdeReferencia *= 1 + (taxa / 100) * (percentualCdi / 100)
+      }
+    }
+  }
+  const saldoEstimadoHoje = saldoBase * fatorDesdeReferencia
+  const rendimentoDesdeReferencia = saldoEstimadoHoje - saldoBase
+
+  // A projeção parte do saldo estimado de hoje, não do valor antigo gravado.
   function saldoProjetadoEmMeses(meses: number): number {
-    const base = consorcioAtual.credito_disponivel ?? 0
+    const base = saldoEstimadoHoje
     if (cdiDiario <= 0) return base
     const dias = Math.round(meses * DIAS_UTEIS_MES)
     return base * Math.pow(1 + cdiDiario / 100, dias)
   }
 
-  const rendimentoEsteMes = cdiDiario > 0 && consorcioAtual.credito_disponivel != null
-    ? saldoProjetadoEmMeses(1) - consorcioAtual.credito_disponivel
+  const rendimentoEsteMes = cdiDiario > 0 && saldoReferencia != null
+    ? saldoProjetadoEmMeses(1) - saldoEstimadoHoje
     : 0
 
   // Primeiro mês em que o rendimento MENSAL (incremento daquele mês, não o
   // acumulado) ultrapassa o valor da parcela atual.
   const mesCruzamento = (() => {
-    if (cdiDiario <= 0 || parcelaAtual <= 0 || consorcioAtual.credito_disponivel == null) return null
+    if (cdiDiario <= 0 || parcelaAtual <= 0 || saldoReferencia == null) return null
     for (let m = 1; m <= 600; m++) {
       const incremento = saldoProjetadoEmMeses(m) - saldoProjetadoEmMeses(m - 1)
       if (incremento >= parcelaAtual) return m
@@ -548,6 +616,48 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
     await carregar()
   }
 
+  // Registra o saldo real do extrato. Se for o mais recente, também grava em
+  // consorcios.credito_disponivel — é esse campo que o Painel Geral soma.
+  async function adicionarSaldo() {
+    const valor = parseFloat(saldoValor.replace(',', '.'))
+    if (isNaN(valor) || valor < 0) { setErro('Saldo inválido'); return }
+    if (!saldoData) { setErro('Informe a data do saldo'); return }
+    setSalvandoSaldo(true); setErro(null)
+    const { error } = await supabase.from('consorcio_saldos').insert({
+      consorcio_id: consorcio.id, data: saldoData, valor, observacao: saldoObs.trim() || null,
+    })
+    if (error) { setSalvandoSaldo(false); setErro('Erro ao salvar o saldo: ' + error.message); return }
+    if (saldos.length === 0 || saldoData >= saldos[0].data) {
+      const { error: errC } = await supabase.from('consorcios').update({ credito_disponivel: valor }).eq('id', consorcio.id)
+      if (errC) setErro('Saldo salvo, mas falhou ao atualizar o crédito disponível: ' + errC.message)
+    }
+    setSalvandoSaldo(false)
+    setSaldoValor(''); setSaldoObs('')
+    mostrarSucesso('Saldo atualizado!')
+    await carregar()
+  }
+
+  async function removerSaldo(s: SaldoRegistro) {
+    if (!confirm(`Remover o saldo de ${fmt(Number(s.valor))} de ${new Date(s.data + 'T12:00:00').toLocaleDateString('pt-BR')}?`)) return
+    const { error } = await supabase.from('consorcio_saldos').delete().eq('id', s.id)
+    if (error) { setErro('Erro ao remover o saldo: ' + error.message); return }
+    // Se era a referência, o anterior volta a ser o crédito disponível.
+    if (saldos[0]?.id === s.id && saldos[1]) {
+      await supabase.from('consorcios').update({ credito_disponivel: saldos[1].valor }).eq('id', consorcio.id)
+    }
+    await carregar()
+  }
+
+  async function salvarPercentualCdi() {
+    const v = parseFloat(pctCdiInput.replace(',', '.'))
+    if (isNaN(v) || v <= 0 || v > 300) { setErro('% do CDI inválido (use um valor entre 0 e 300)'); setPctCdiInput(String(percentualCdi)); return }
+    if (v === percentualCdi) return
+    const { error } = await supabase.from('consorcios').update({ percentual_cdi: v }).eq('id', consorcio.id)
+    if (error) { setErro('Erro ao salvar o % do CDI: ' + error.message); setPctCdiInput(String(percentualCdi)); return }
+    setConsorcioAtual(c => ({ ...c, percentual_cdi: v }))
+    mostrarSucesso('% do CDI atualizado!')
+  }
+
   const parcelasFiltradas = filtroStatus === 'todos' || filtroStatus === 'projecao'
     ? parcelas
     : parcelas.filter(p => p.status === filtroStatus)
@@ -650,15 +760,101 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
 
       {consorcioAtual.credito_disponivel != null && (
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div>
+          <div>
+            <div className="flex items-center gap-2">
               <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Crédito Disponível (contemplado)</span>
-              <div className="text-2xl font-black text-emerald-600 privado">{fmt(consorcioAtual.credito_disponivel)}</div>
+              {rendimentoDesdeReferencia > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold">estimado hoje</span>
+              )}
+            </div>
+            <div className="text-2xl font-black text-emerald-600 privado">{fmt(saldoEstimadoHoje)}</div>
+            {saldoReferencia && (
               <div className="text-[10px] text-slate-400 mt-0.5">
-                Registrado como pago pela administradora: <span className="font-bold text-emerald-500 privado">{fmt(totalRendimentos)}</span>
+                Último saldo real: <span className="font-bold text-slate-500 privado">{fmt(saldoBase)}</span> em {new Date(saldoReferencia.data + 'T12:00:00').toLocaleDateString('pt-BR')}
+                {rendimentoDesdeReferencia > 0 && <> · <span className="font-bold text-emerald-500 privado">+{fmt(rendimentoDesdeReferencia)}</span> estimados pelo CDI desde então</>}
+                {carregandoCDI && ' · buscando CDI...'}
+              </div>
+            )}
+            <div className="text-[10px] text-slate-400 mt-0.5">
+              Registrado como pago pela administradora: <span className="font-bold text-emerald-500 privado">{fmt(totalRendimentos)}</span>
+            </div>
+          </div>
+
+          {saldosIndisponivel && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-xs">
+              O histórico de saldos ainda não existe no banco — rode a migração <b>020_consorcio_saldos.sql</b> no Supabase (SQL Editor) pra poder atualizar o saldo.
+            </div>
+          )}
+
+          <div className="flex items-end gap-2 flex-wrap pt-3 border-t border-slate-50">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Data do saldo</label>
+              <input type="date" value={saldoData} onChange={e => setSaldoData(e.target.value)}
+                className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Saldo no extrato (R$)</label>
+              <input type="number" step="0.01" min="0" value={saldoValor} onChange={e => setSaldoValor(e.target.value)}
+                placeholder="Ex: 80500.00" className="w-32 border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Obs. (opcional)</label>
+              <input type="text" value={saldoObs} onChange={e => setSaldoObs(e.target.value)}
+                placeholder="Ex: extrato de agosto" className="w-36 border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+            </div>
+            <button onClick={adicionarSaldo} disabled={salvandoSaldo || saldosIndisponivel}
+              className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+              {salvandoSaldo ? '...' : 'Atualizar saldo'}
+            </button>
+            <div className="ml-auto">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1" title="Quanto a administradora paga sobre o CDI">% do CDI</label>
+              <input type="number" step="0.01" min="0" value={pctCdiInput} onChange={e => setPctCdiInput(e.target.value)}
+                onBlur={salvarPercentualCdi} onKeyDown={e => e.key === 'Enter' && (e.currentTarget.blur())}
+                className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+            </div>
+          </div>
+
+          {saldos.length > 0 && (
+            <div className="pt-3 border-t border-slate-50">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Histórico de saldos</div>
+              <div className="overflow-y-auto max-h-48 border border-slate-100 rounded-xl">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
+                      <th className="text-left py-1.5 pl-3 pr-3">Data</th>
+                      <th className="text-right py-1.5 pr-3">Saldo</th>
+                      <th className="text-right py-1.5 pr-3">Variação</th>
+                      <th className="text-left py-1.5 pr-3">Obs.</th>
+                      <th className="py-1.5 pr-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {saldos.map((s, i) => {
+                      const anterior = saldos[i + 1]
+                      const variacao = anterior ? Number(s.valor) - Number(anterior.valor) : null
+                      return (
+                        <tr key={s.id}>
+                          <td className="py-1.5 pl-3 pr-3 text-slate-600">{new Date(s.data + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                          <td className="py-1.5 pr-3 text-right font-bold text-slate-800 privado">{fmt(Number(s.valor))}</td>
+                          <td className={`py-1.5 pr-3 text-right font-bold privado ${variacao == null ? 'text-slate-300' : variacao >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {variacao == null ? '—' : `${variacao >= 0 ? '+' : ''}${fmt(variacao)}`}
+                          </td>
+                          <td className="py-1.5 pr-3 text-slate-500">{s.observacao || '—'}</td>
+                          <td className="py-1.5 pr-3 text-right">
+                            <button onClick={() => removerSaldo(s)} title="Remover este saldo" className="text-slate-300 hover:text-rose-500"><X size={12} /></button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
-            <div className="flex items-end gap-2">
+          )}
+
+          <div className="pt-3 border-t border-slate-50">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Rendimentos pagos pela administradora</div>
+            <div className="flex items-end gap-2 flex-wrap">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Data</label>
                 <input type="date" value={rendData} onChange={e => setRendData(e.target.value)}
@@ -976,7 +1172,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
         {filtroStatus === 'projecao' ? (
           <div className="p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Projeção — crédito parado rendendo 100% do CDI</span>
+              <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Projeção — crédito parado rendendo {percentualCdi.toLocaleString('pt-BR')}% do CDI</span>
               {carregandoCDI
                 ? <span className="text-[10px] text-slate-300">buscando taxa...</span>
                 : cdiDiario > 0 && <span className="text-[10px] text-slate-400">taxa atual: {cdiDiario.toFixed(4)}%/dia</span>}
@@ -1021,7 +1217,7 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
                         const saldo = saldoProjetadoEmMeses(m)
                         const saldoAnterior = saldoProjetadoEmMeses(m - 1)
                         const rendMes = saldo - saldoAnterior
-                        const rendAcumulado = saldo - (consorcioAtual.credito_disponivel ?? 0)
+                        const rendAcumulado = saldo - saldoEstimadoHoje
                         const cruzou = mesCruzamento === m
                         return (
                           <tr key={m} className={cruzou ? 'bg-emerald-50' : ''}>
