@@ -6,6 +6,7 @@ import {
   DollarSign, BarChart3, Edit2, Check, AlertTriangle, RotateCcw,
 } from 'lucide-react'
 import { buscarHistoricoCDI } from '../lib/cdi'
+import { estimarSaldoConsorcio } from '../lib/consorcioSaldo'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -336,20 +337,10 @@ function DashboardConsorcio({ consorcio, onVoltar }: { consorcio: Consorcio; onV
   // Saldo estimado HOJE: último saldo real composto pelo CDI (× % que a
   // administradora paga) em cada dia útil publicado depois da data dele. O dia
   // de hoje fica de fora — a taxa só é divulgada no fim do dia.
-  const hojeLocal = (() => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  })()
   const saldoBase = saldoReferencia?.valor ?? 0
-  let fatorDesdeReferencia = 1
-  if (saldoReferencia) {
-    for (const [dia, taxa] of cdiMap) {
-      if (dia > saldoReferencia.data && dia < hojeLocal) {
-        fatorDesdeReferencia *= 1 + (taxa / 100) * (percentualCdi / 100)
-      }
-    }
-  }
-  const saldoEstimadoHoje = saldoBase * fatorDesdeReferencia
+  const saldoEstimadoHoje = saldoReferencia
+    ? estimarSaldoConsorcio(saldoBase, saldoReferencia.data, cdiMap, percentualCdi)
+    : 0
   const rendimentoDesdeReferencia = saldoEstimadoHoje - saldoBase
 
   // A projeção parte do saldo estimado de hoje, não do valor antigo gravado.
