@@ -3,7 +3,6 @@ import { supabase } from "../lib/supabaseClient";
 import { CUBS_ESCRITURA_TOTAL } from "../lib/constants";
 import { resolverAliquota } from "../lib/aliquota";
 import { buscarHistoricoCDI, calcularJurosCompostos } from "../lib/cdi";
-import { estimarSaldosConsorcios } from "../lib/consorcioSaldo";
 import { buscarCotacoesBrapi } from "../lib/brapi";
 
 export function usePainelGeral(mesDash: string, anoDash: string) {
@@ -21,10 +20,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   // Investimentos / Patrimônio
   const [totalCaixinhas,  setTotalCaixinhas]  = useState(0); // vem via callback do Caixinhas.tsx (c/ rendimento CDI)
   const [listaCaixinhas,  setListaCaixinhas]  = useState<{ nome: string; valor_atual: number }[]>([]);
-  const [consorcios,      setConsorcios]      = useState<any[]>([]);
-  // Crédito parado dos consórcios contemplados, estimado pelo CDI desde o
-  // último saldo real informado (id do consórcio → valor de hoje).
-  const [saldoConsorcioEstimado, setSaldoConsorcioEstimado] = useState<Record<string, number>>({});
   const [proximaParcela,  setProximaParcela]  = useState<any | null>(null);
   // ── PREVIDÊNCIA ──
   const [saldoPrevidencia,   setSaldoPrevidencia]   = useState(0);
@@ -49,7 +44,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     try {
       const [
         rNotas, rDespesas, rEntradas, rSaidas, rTelegram,
-        rConsorcios, rParcela,
+        rParcela,
         rCub, rParcelasImovel, rReforcos, rImovel, rCasaResumo,
         rPrevRend, rPrevAportes, rAcoes, rFGTS, rBens,
         rCaixinhas, rAliquotas,
@@ -59,7 +54,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         supabase.from("entradas_pessoais").select("valor,data_entrada,tipo,descricao"),
         supabase.from("pessoal_saidas").select("valor,data_gasto,categoria"),
         supabase.from("telegram_gastos").select("valor,data_gasto,categoria").eq("reconciliado", false),
-        supabase.from("consorcios").select("*"),
         supabase.from("parcelas_calculadas").select("valor_total,data_vencimento").eq("status","pendente").order("data_vencimento",{ascending:true}).limit(1),
         supabase.from("imovel_cub").select("valor_cub").order("data_registro",{ascending:false}).limit(1),
         supabase.from("imovel_parcelas").select("numero_parcela,valor_pago,adiantada"),
@@ -86,7 +80,6 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
       if (rEntradas.data)   setEntradasPF(rEntradas.data);
       if (rSaidas.data)     setSaidasPF(rSaidas.data);
       if (rTelegram.data)   setTelegramPF(rTelegram.data);
-      if (rConsorcios.data) setConsorcios(rConsorcios.data);
       if (rParcela.data && rParcela.data[0]) setProximaParcela(rParcela.data[0]);
       if (rCaixinhas.data && rCaixinhas.data.length > 0) {
         const lista = rCaixinhas.data.map((c: any) => ({ nome: c.nome, valor_atual: Number(c.valor_atual) }));
@@ -153,20 +146,8 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
         const dias = Math.ceil((dataInicio.getTime() - hoje2.getTime()) / 86400000);
         setProximaParcelaImovel({ valor: valorProxima, dias });
       }
-      // Sem await: o CDI vem do Banco Central e não deve segurar o carregamento.
-      atualizarConsorciosComRendimento();
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }
-
-  async function atualizarConsorciosComRendimento() {
-    try {
-      const [{ data: cs }, { data: sl }] = await Promise.all([
-        supabase.from("consorcios").select("*"),
-        supabase.from("consorcio_saldos").select("consorcio_id,data,valor,created_at"),
-      ]);
-      setSaldoConsorcioEstimado(await estimarSaldosConsorcios(cs || [], sl || []));
-    } catch (e) { console.error(e); /* sem CDI, segue com o último saldo real */ }
   }
 
   // Recalcula Caixinhas (c/ rendimento CDI real) e Ações/FIIs (c/ cotação
@@ -174,7 +155,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   // telas — que é quando esses valores normalmente são atualizados.
   async function atualizarValoresMercado() {
     setAtualizandoMercado(true);
-    await Promise.all([atualizarCaixinhasComRendimento(), atualizarAcoesComCotacao(), atualizarConsorciosComRendimento()]);
+    await Promise.all([atualizarCaixinhasComRendimento(), atualizarAcoesComCotacao()]);
     setAtualizandoMercado(false);
   }
 
@@ -248,15 +229,13 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
   // totalSaidasMes/saldoMes, que ficam de fora dessa correção por ora.
   const telegramDoMes    = telegramPF.filter(t => t.data_gasto?.startsWith(prefixoDash));
 
-  // Um consórcio já contemplado (crédito sacável, ainda não usado) conta pelo
-  // crédito disponível real informado pelo administrador, não pelo valor do
-  // bem original — que era só uma expectativa até a contemplação acontecer.
-  const totalConsorcios = consorcios.reduce((s, c) => s + (Number(saldoConsorcioEstimado[c.id] ?? c.credito_disponivel ?? c.valor_bem) || 0), 0);
+  // O consórcio não entra no patrimônio: o crédito foi usado na compra do
+  // veículo, que já está em Bens — somar os dois contaria o carro duas vezes.
   const totalBens = bens.reduce((s: number, b: any) => s + (Number(b.valor_estimado) || 0), 0);
 
   // ── patrimônio ───────────────────────────────────────────────────────────
   // totalCaixinhas já inclui rendimento CDI (vem do callback do Caixinhas.tsx)
-  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + totalConsorcios + saldoPrevidencia + totalAcoes + saldoFGTS + totalBens;
+  const patrimonioTotal = imovelPago + casaPago + totalCaixinhas + saldoPrevidencia + totalAcoes + saldoFGTS + totalBens;
 
   const faturamentoAno  = notas.filter(n => n.data_emissao?.startsWith(anoDash)).reduce((s, n) => s + (Number(n.valor)||0), 0);
 
@@ -273,7 +252,7 @@ export function usePainelGeral(mesDash: string, anoDash: string) {
     loading,
     notas, proximaParcela, aportesPrev,
     totalCaixinhas, setTotalCaixinhas, listaCaixinhas,
-    imovelPago, casaPago, totalConsorcios, saldoPrevidencia, totalAcoes, saldoFGTS, totalBens,
+    imovelPago, casaPago, saldoPrevidencia, totalAcoes, saldoFGTS, totalBens,
     faturamentoMes, impostoMes, custosMes, lucroEmpresaMes, faturamentoAno,
     entradasDoMes, totalEntradasMes, saidasDoMes, totalSaidasMes, saldoMes,
     patrimonioTotal,

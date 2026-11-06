@@ -27,7 +27,7 @@ export default function PainelGeral({
   const {
     loading,
     notas, totalCaixinhas, listaCaixinhas,
-    imovelPago, casaPago, totalConsorcios, saldoPrevidencia, totalAcoes, saldoFGTS, totalBens,
+    imovelPago, casaPago, saldoPrevidencia, totalAcoes, saldoFGTS, totalBens,
     faturamentoMes, impostoMes, custosMes, lucroEmpresaMes, faturamentoAno,
     entradasDoMes, totalEntradasMes, saidasDoMes, totalSaidasMes, saldoMes,
     patrimonioTotal,
@@ -89,11 +89,10 @@ export default function PainelGeral({
             </div>
             <p className="text-3xl sm:text-4xl md:text-5xl font-black tabular-nums text-white tracking-tight privado">{fmt(patrimonioTotal)}</p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7">
             {[
               { label: "Apt 810",     valor: imovelPago,       cor: "text-cyan-400",    acao: () => selecionarSubImovel("apartamento") },
               { label: "Casa",        valor: casaPago,         cor: "text-teal-400",    acao: () => selecionarSubImovel("casa") },
-              { label: "Consórcio",   valor: totalConsorcios,  cor: "text-violet-400",  acao: () => selecionarSubInvestimento("consorcios") },
               { label: "Caixinhas",   valor: totalCaixinhas,   cor: "text-emerald-400", acao: () => selecionarSubInvestimento("caixinhas") },
               { label: "Previdência", valor: saldoPrevidencia, cor: "text-amber-400",   acao: () => selecionarSubInvestimento("previdencia") },
               { label: "Ações/FIIs",  valor: totalAcoes,       cor: "text-indigo-400",  acao: () => selecionarSubInvestimento("acoes") },
